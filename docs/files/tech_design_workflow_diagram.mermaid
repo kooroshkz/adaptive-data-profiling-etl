@@ -1,0 +1,50 @@
+graph TB
+    Start([Pipeline Trigger:<br/>Manual or Scheduled]) --> InitCheck{First Run?}
+    
+    InitCheck -->|Yes| HistBackfill[Historical Backfill<br/>Ingest Past Weather Data]
+    InitCheck -->|No| DailyIngest[Daily Incremental Ingest<br/>Fetch New Data Since Last Run]
+    
+    HistBackfill --> RawStore[Store in Raw Layer<br/>DuckDB + Iceberg<br/>Add Metadata]
+    DailyIngest --> RawStore
+    
+    RawStore --> dbtStaging[dbt Staging Models<br/>Basic Cleaning<br/>Type Conversion<br/>Column Renaming]
+    
+    dbtStaging --> StagingStore[(Staging Tables<br/>Iceberg Format)]
+    
+    StagingStore --> dbtMart[dbt Mart Models<br/>Aggregations<br/>Derived Values<br/>Analysis-Ready Data]
+    
+    dbtMart --> MartStore[(Mart Tables<br/>Iceberg Format)]
+    
+    MartStore --> QualityChecks[Data Quality Validation<br/>Missing Values<br/>Uniqueness<br/>Range Checks]
+    
+    QualityChecks --> LogResults[Log Validation Results<br/>Non-Blocking]
+    
+    LogResults --> Snapshot[Create Iceberg Snapshot<br/>Version Control]
+    
+    Snapshot --> MLReady{ML Integration<br/>Enabled?}
+    
+    MLReady -->|Yes - Future| MLAnomaly[ML Anomaly Detection<br/>External Component<br/>Reads from DuckDB]
+    MLReady -->|No| Complete([Pipeline Complete<br/>Daily Schedule Continues])
+    
+    MLAnomaly --> StoreAnomalies[(Store Anomaly Scores<br/>Separate Tables)]
+    
+    StoreAnomalies --> Complete
+    
+    subgraph Orchestration [Apache Airflow Orchestration]
+        RawStore
+        dbtStaging
+        dbtMart
+        QualityChecks
+    end
+    
+    subgraph Storage [Storage Layer - DuckDB + Iceberg]
+        StagingStore
+        MartStore
+    end
+    
+    style Start fill:#e1f5e1
+    style Complete fill:#e1f5e1
+    style HistBackfill fill:#fff4e6
+    style DailyIngest fill:#e3f2fd
+    style QualityChecks fill:#fce4ec
+    style MLAnomaly fill:#f3e5f5
