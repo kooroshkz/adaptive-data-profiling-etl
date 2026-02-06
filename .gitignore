@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Airflow
+airflow/airflow.db
+airflow/airflow.cfg
+airflow/webserver_config.py
+airflow/logs/
+airflow/*.pid
+airflow/*.err
+airflow/*.log
+
+# DuckDB
+*.db
+*.db.wal
+duckdb/*.db
+duckdb/*.wal
+
+# Data files
+data/raw/*.parquet
+data/staging/*.parquet
+data/mart/*.parquet
+*.parquet
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Environment variables
+.env
+.env.local

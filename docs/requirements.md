@@ -40,8 +40,8 @@ dbt is used for **data transformations** and **schema management** because trans
 Apache Airflow is used to **orchestrate** the ETL pipeline as supports scheduling and **task dependencies** (DAGs) while allows **historical backfills** and daily runs. Airflow help with **observability** and **error handling** and let us easily simulate **realistic ETL workflows**. Simple schedulers or manual execution are not sufficient for realistic pipeline evaluation.
 
 
-## Table Format and Versioning
+## Data Versioning
 
-### Apache Iceberg
+### DuckDB Native Features
 
-Apache Iceberg is used as the **table format** because it supports **table versioning** and **snapshots** to follow schema changes over time and **revert** to previous experiment versions. It helps **reproduce experiments** on **historical data**. Using plain files without versioning would limit the ability to analyze data quality changes over time.
+DuckDB is used with **Parquet files** for storage and supports **schema evolution** natively. Data versioning is achieved through **timestamped table names** and **partition strategies** to track schema changes over time and **revert** to previous experiment versions. This helps **reproduce experiments** on **historical data** without adding external table format complexity.

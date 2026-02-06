@@ -20,7 +20,7 @@ After ingestion, transformations and validations are applied before the data is 
 Each part of the system has a single responsibility to keep the pipeline easy to understand and extend.
 
 Apache Airflow is used to control execution order and scheduling.
-DuckDB and Apache Iceberg are used for storage and querying.
+DuckDB is used for storage and querying with Parquet files.
 dbt is used to manage transformations and data quality checks.
 
 ---
@@ -57,8 +57,8 @@ DuckDB is used as the analytical database.
 It allows SQL queries to be executed directly on local data without running a separate server.
 This makes the system easy to set up and maintain.
 
-Apache Iceberg is used as the table format.
-Iceberg provides table versioning and supports schema changes over time.
+Data is stored in Parquet format, which DuckDB can query efficiently.
+Versioning is handled through timestamped snapshots and DuckDB's native capabilities.
 This makes it possible to reproduce experiments and compare different versions of the data.
 
 Data is stored in three logical layers.
@@ -98,7 +98,7 @@ The pipeline is designed to support incremental processing.
 Each ingestion run tracks the most recent timestamp that was successfully processed.
 Only new data is fetched during daily runs.
 
-Iceberg snapshots make it possible to compare data across different pipeline executions.
+DuckDB table snapshots and timestamped data make it possible to compare data across different pipeline executions.
 This is useful for studying how data quality changes over time.
 
 ---
