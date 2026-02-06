@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Weather data ingestion from Open-Meteo API."""
+"""Weather data ingestion from Open-Meteo API to Parquet files."""
 
 import os
 import argparse
 import logging
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from config import (
     CITIES, HISTORICAL_API_URL, FORECAST_API_URL,
@@ -26,7 +28,7 @@ class WeatherIngestion:
     
     def __init__(self, city_id: str):
         if city_id not in CITIES:
-            raise ValueError(f"Unknown city: {city_id}")
+            raise ValueError(f"Unknown city: {city_id}. Available: {list(CITIES.keys())}")
             
         self.city_id = city_id
         self.city_config = CITIES[city_id]
@@ -71,7 +73,7 @@ class WeatherIngestion:
             return None
             
     def transform_to_dataframe(self, raw_data: Dict) -> pd.DataFrame:
-        """Transform API response to pandas DataFrame."""
+        """Transform API response to DataFrame."""
         hourly_data = raw_data.get("hourly", {})
         df = pd.DataFrame(hourly_data)
         
@@ -86,7 +88,6 @@ class WeatherIngestion:
         df["time"] = pd.to_datetime(df["time"])
         
         logger.info(f"Transformed {len(df):,} hourly records")
-        
         return df
         
     def save_to_parquet(self, df: pd.DataFrame, start_date: str, end_date: str):
@@ -127,7 +128,6 @@ class WeatherIngestion:
                 
             df = self.transform_to_dataframe(raw_data)
             filepath = self.save_to_parquet(df, start_date, end_date)
-            
             log_ingestion_stats(self.city_name, start_date, end_date, len(df))
             
             logger.info("INGESTION COMPLETED SUCCESSFULLY")
@@ -141,8 +141,17 @@ class WeatherIngestion:
 
 
 def main():
-    """Command-line interface."""
-    parser = argparse.ArgumentParser(description="Ingest weather data from Open-Meteo API")
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(
+        description="Ingest weather data from Open-Meteo API",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python weather_ingest.py --city amsterdam --mode backfill
+  python weather_ingest.py --city new_york --mode incremental
+  python weather_ingest.py --city london --start-date 2024-01-01 --end-date 2024-01-31
+        """
+    )
     
     parser.add_argument(
         "--city",

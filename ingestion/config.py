@@ -1,9 +1,7 @@
 """Configuration for weather data ingestion."""
 
 from datetime import datetime, timedelta
-import os
 
-# Cities with coordinates
 CITIES = {
     "amsterdam": {
         "name": "Amsterdam",
@@ -37,11 +35,9 @@ CITIES = {
     }
 }
 
-# API endpoints
 HISTORICAL_API_URL = "https://archive-api.open-meteo.com/v1/archive"
 FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
 
-# Date ranges: 2 years for seasonal coverage
 BACKFILL_START_DATE = "2024-01-01"
 BACKFILL_END_DATE = "2025-12-31"
 
@@ -50,7 +46,6 @@ def get_incremental_date():
     yesterday = datetime.now() - timedelta(days=1)
     return yesterday.strftime("%Y-%m-%d")
 
-# Weather variables
 HOURLY_VARIABLES = [
     "temperature_2m",
     "relative_humidity_2m",
@@ -67,11 +62,10 @@ DAILY_VARIABLES = [
     "wind_speed_10m_max"
 ]
 
-# Request settings
 REQUEST_TIMEOUT = 30
 MAX_RETRIES = 3
 RETRY_DELAY = 2
 
-# Storage path
+import os
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw")
