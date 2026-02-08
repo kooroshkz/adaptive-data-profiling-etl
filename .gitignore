@@ -34,6 +34,9 @@ data/mart/*.parquet
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
+weather_dbt/target/
+weather_dbt/dbt_packages/
+weather_dbt/logs/
 
 # IDEs
 .vscode/

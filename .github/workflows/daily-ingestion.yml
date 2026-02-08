@@ -1,0 +1,46 @@
+name: Daily Weather Ingestion
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  ingest-weather:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Install dependencies
+      run: |
+        pip install pandas pyarrow requests
+        
+    - name: Fetch weather data
+      run: |
+        cd ingestion
+        python weather_ingest.py --city amsterdam --mode incremental
+        python weather_ingest.py --city new_york --mode incremental
+        python weather_ingest.py --city london --mode incremental
+        python weather_ingest.py --city paris --mode incremental
+        python weather_ingest.py --city tokyo --mode incremental
+        
+    - name: Upload to S3
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+      run: |
+        pip install awscli
+        aws s3 sync data/raw/ s3://${{ secrets.S3_BUCKET }}/raw/ --exclude "*" --include "*.parquet"
+        
+    - name: Log completion
+      run: |
+        echo "Ingestion completed at $(date)"
+        ls -lh data/raw/*.parquet
