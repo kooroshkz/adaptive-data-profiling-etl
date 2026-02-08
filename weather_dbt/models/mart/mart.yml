@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: weather_daily
+    description: Daily weather aggregations and statistics
+    columns:
+      - name: city_id
+        description: City identifier
+        tests:
+          - not_null
+      - name: date
+        description: Date of aggregation
+        tests:
+          - not_null
+      - name: temp_avg
+        description: Average daily temperature
+      - name: precip_total
+        description: Total daily precipitation
+      - name: total_hours
+        description: Number of hourly records aggregated
+        tests:
+          - not_null
+
+  - name: weather_anomalies
+    description: Weather measurements with statistical anomaly detection
+    columns:
+      - name: time
+        description: Measurement timestamp
+        tests:
+          - not_null
+      - name: city_id
+        description: City identifier
+        tests:
+          - not_null
+      - name: temp_zscore
+        description: Z-score for temperature (standard deviations from mean)
+      - name: is_temp_anomaly
+        description: Flag for temperature anomaly (>3 std dev)
+        tests:
+          - not_null

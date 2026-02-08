@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg_weather
+    description: Cleaned and enriched weather data with date dimensions
+    columns:
+      - name: time
+        description: Measurement timestamp
+        tests:
+          - not_null
+          - unique
+      - name: date
+        description: Date of measurement
+        tests:
+          - not_null
+      - name: city_id
+        description: City identifier
+        tests:
+          - not_null
+      - name: temperature_2m
+        description: Temperature in Celsius (nulls filled with 0)
+        tests:
+          - not_null
+      - name: precipitation
+        description: Precipitation in mm (nulls filled with 0)
+        tests:
+          - not_null

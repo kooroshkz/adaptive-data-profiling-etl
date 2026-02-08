@@ -1,0 +1,44 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw weather data from Open-Meteo API stored in Parquet files
+    schema: raw
+    tables:
+      - name: weather
+        description: Hourly weather measurements ingested from API
+        columns:
+          - name: time
+            description: Timestamp of measurement
+            tests:
+              - not_null
+          - name: temperature_2m
+            description: Air temperature at 2 meters height (Celsius)
+          - name: relative_humidity_2m
+            description: Relative humidity at 2 meters (%)
+          - name: precipitation
+            description: Total precipitation (mm)
+          - name: wind_speed_10m
+            description: Wind speed at 10 meters (km/h)
+          - name: cloud_cover
+            description: Cloud cover percentage
+          - name: pressure_msl
+            description: Atmospheric pressure at sea level (hPa)
+          - name: city_id
+            description: City identifier
+            tests:
+              - not_null
+          - name: city_name
+            description: City display name
+            tests:
+              - not_null
+          - name: latitude
+            description: Location latitude
+          - name: longitude
+            description: Location longitude
+          - name: timezone
+            description: IANA timezone identifier
+          - name: ingestion_timestamp
+            description: When data was ingested
+          - name: batch_id
+            description: Ingestion batch identifier
