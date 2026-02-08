@@ -1,5 +1,5 @@
 with source as (
-    select * from {{ source('raw', 'weather') }}
+    select * from {{ source('raw', 'weather_hourly') }}
 ),
 
 transformed as (

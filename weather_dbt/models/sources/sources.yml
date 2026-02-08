@@ -5,7 +5,7 @@ sources:
     description: Raw weather data from Open-Meteo API stored in Parquet files
     schema: raw
     tables:
-      - name: weather
+      - name: weather_hourly
         description: Hourly weather measurements ingested from API
         columns:
           - name: time
@@ -38,6 +38,34 @@ sources:
             description: Location longitude
           - name: timezone
             description: IANA timezone identifier
+          - name: ingestion_timestamp
+            description: When data was ingested
+          - name: batch_id
+            description: Ingestion batch identifier
+      
+      - name: weather_daily
+        description: Daily weather aggregates from Open-Meteo API
+        columns:
+          - name: time
+            description: Date of measurement
+            tests:
+              - not_null
+          - name: temperature_2m_max
+            description: Maximum daily temperature (Celsius)
+          - name: temperature_2m_min
+            description: Minimum daily temperature (Celsius)
+          - name: temperature_2m_mean
+            description: Mean daily temperature (Celsius)
+          - name: precipitation_sum
+            description: Total daily precipitation (mm)
+          - name: wind_speed_10m_max
+            description: Maximum wind speed (km/h)
+          - name: city_id
+            description: City identifier
+            tests:
+              - not_null
+          - name: city_name
+            description: City display name
           - name: ingestion_timestamp
             description: When data was ingested
           - name: batch_id

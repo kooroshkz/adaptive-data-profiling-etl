@@ -8,7 +8,6 @@ models:
         description: Measurement timestamp
         tests:
           - not_null
-          - unique
       - name: date
         description: Date of measurement
         tests:
@@ -17,6 +16,9 @@ models:
         description: City identifier
         tests:
           - not_null
+          - relationships:
+              to: source('raw', 'weather_hourly')
+              field: city_id
       - name: temperature_2m
         description: Temperature in Celsius (nulls filled with 0)
         tests:
@@ -25,3 +27,6 @@ models:
         description: Precipitation in mm (nulls filled with 0)
         tests:
           - not_null
+    tests:
+      - unique:
+          column_name: "time || '_' || city_id"

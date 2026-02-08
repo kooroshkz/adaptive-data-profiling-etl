@@ -72,43 +72,54 @@ class WeatherIngestion:
             logger.error(f"Failed to fetch valid data for {self.city_name}")
             return None
             
-    def transform_to_dataframe(self, raw_data: Dict) -> pd.DataFrame:
-        """Transform API response to DataFrame."""
+    def transform_to_dataframe(self, raw_data: Dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Transform API response to DataFrames (hourly and daily)."""
         hourly_data = raw_data.get("hourly", {})
-        df = pd.DataFrame(hourly_data)
+        daily_data = raw_data.get("daily", {})
         
-        df["city_id"] = self.city_id
-        df["city_name"] = self.city_name
-        df["latitude"] = raw_data.get("latitude")
-        df["longitude"] = raw_data.get("longitude")
-        df["timezone"] = raw_data.get("timezone")
-        df["ingestion_timestamp"] = datetime.now()
-        df["batch_id"] = self.batch_id
+        df_hourly = pd.DataFrame(hourly_data)
+        df_hourly["city_id"] = self.city_id
+        df_hourly["city_name"] = self.city_name
+        df_hourly["latitude"] = raw_data.get("latitude")
+        df_hourly["longitude"] = raw_data.get("longitude")
+        df_hourly["timezone"] = raw_data.get("timezone")
+        df_hourly["ingestion_timestamp"] = datetime.now()
+        df_hourly["batch_id"] = self.batch_id
+        df_hourly["time"] = pd.to_datetime(df_hourly["time"])
         
-        df["time"] = pd.to_datetime(df["time"])
+        df_daily = pd.DataFrame(daily_data)
+        df_daily["city_id"] = self.city_id
+        df_daily["city_name"] = self.city_name
+        df_daily["latitude"] = raw_data.get("latitude")
+        df_daily["longitude"] = raw_data.get("longitude")
+        df_daily["timezone"] = raw_data.get("timezone")
+        df_daily["ingestion_timestamp"] = datetime.now()
+        df_daily["batch_id"] = self.batch_id
+        df_daily["time"] = pd.to_datetime(df_daily["time"])
         
-        logger.info(f"Transformed {len(df):,} hourly records")
-        return df
+        logger.info(f"Transformed {len(df_hourly):,} hourly records and {len(df_daily):,} daily records")
+        return df_hourly, df_daily
         
-    def save_to_parquet(self, df: pd.DataFrame, start_date: str, end_date: str):
-        """Save DataFrame to Parquet file."""
+    def save_to_parquet(self, df_hourly: pd.DataFrame, df_daily: pd.DataFrame, start_date: str, end_date: str):
+        """Save DataFrames to Parquet files."""
         os.makedirs(RAW_DATA_PATH, exist_ok=True)
         
-        filename = f"{self.city_id}_{start_date}_{end_date}_{self.batch_id}.parquet"
-        filepath = os.path.join(RAW_DATA_PATH, filename)
+        hourly_filename = f"{self.city_id}_hourly_{start_date}_{end_date}_{self.batch_id}.parquet"
+        hourly_filepath = os.path.join(RAW_DATA_PATH, hourly_filename)
         
-        df.to_parquet(
-            filepath,
-            engine='pyarrow',
-            compression='snappy',
-            index=False
-        )
+        daily_filename = f"{self.city_id}_daily_{start_date}_{end_date}_{self.batch_id}.parquet"
+        daily_filepath = os.path.join(RAW_DATA_PATH, daily_filename)
         
-        file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
-        logger.info(f"Saved to: {filepath}")
-        logger.info(f"File size: {file_size_mb:.2f} MB")
+        df_hourly.to_parquet(hourly_filepath, engine='pyarrow', compression='snappy', index=False)
+        df_daily.to_parquet(daily_filepath, engine='pyarrow', compression='snappy', index=False)
         
-        return filepath
+        hourly_size_mb = os.path.getsize(hourly_filepath) / (1024 * 1024)
+        daily_size_mb = os.path.getsize(daily_filepath) / (1024 * 1024)
+        
+        logger.info(f"Saved hourly data: {hourly_filepath} ({hourly_size_mb:.2f} MB)")
+        logger.info(f"Saved daily data: {daily_filepath} ({daily_size_mb:.2f} MB)")
+        
+        return hourly_filepath, daily_filepath
         
     def run(
         self,
@@ -126,14 +137,14 @@ class WeatherIngestion:
             if not raw_data:
                 return None
                 
-            df = self.transform_to_dataframe(raw_data)
-            filepath = self.save_to_parquet(df, start_date, end_date)
-            log_ingestion_stats(self.city_name, start_date, end_date, len(df))
+            df_hourly, df_daily = self.transform_to_dataframe(raw_data)
+            hourly_path, daily_path = self.save_to_parquet(df_hourly, df_daily, start_date, end_date)
+            log_ingestion_stats(self.city_name, start_date, end_date, len(df_hourly))
             
             logger.info("INGESTION COMPLETED SUCCESSFULLY")
             logger.info("=" * 70)
             
-            return filepath
+            return hourly_path
             
         except Exception as e:
             logger.error(f"INGESTION FAILED: {e}", exc_info=True)

@@ -42,36 +42,49 @@ def create_schemas(conn):
         logger.info(f"Created schema: {schema}")
 
 
-def create_raw_table(conn):
-    """Create raw.weather table from Parquet files."""
-    logger.info("Creating raw.weather table...")
+def create_raw_tables(conn):
+    """Create raw.weather_hourly and raw.weather_daily tables from Parquet files."""
+    logger.info("Creating raw weather tables...")
     
-    parquet_files = list(RAW_DATA_PATH.glob("*.parquet"))
+    hourly_files = list(RAW_DATA_PATH.glob("*_hourly_*.parquet"))
+    daily_files = list(RAW_DATA_PATH.glob("*_daily_*.parquet"))
     
-    if not parquet_files:
-        logger.warning("No Parquet files found in data/raw/")
+    if not hourly_files:
+        logger.warning("No hourly Parquet files found in data/raw/")
         logger.info("Run ingestion first: python ingestion/weather_ingest.py")
         return
     
-    logger.info(f"Found {len(parquet_files)} Parquet file(s)")
+    logger.info(f"Found {len(hourly_files)} hourly Parquet file(s)")
+    logger.info(f"Found {len(daily_files)} daily Parquet file(s)")
     
     conn.execute(f"""
-        CREATE OR REPLACE TABLE raw.weather AS
-        SELECT * FROM read_parquet('{RAW_DATA_PATH}/*.parquet')
+        CREATE OR REPLACE TABLE raw.weather_hourly AS
+        SELECT * FROM read_parquet('{RAW_DATA_PATH}/*_hourly_*.parquet')
     """)
     
-    result = conn.execute("SELECT COUNT(*) FROM raw.weather").fetchone()
-    row_count = result[0]
+    hourly_result = conn.execute("SELECT COUNT(*) FROM raw.weather_hourly").fetchone()
+    hourly_count = hourly_result[0]
     
-    logger.info(f"Loaded {row_count:,} rows into raw.weather")
+    logger.info(f"Loaded {hourly_count:,} rows into raw.weather_hourly")
+    
+    if daily_files:
+        conn.execute(f"""
+            CREATE OR REPLACE TABLE raw.weather_daily AS
+            SELECT * FROM read_parquet('{RAW_DATA_PATH}/*_daily_*.parquet')
+        """)
+        
+        daily_result = conn.execute("SELECT COUNT(*) FROM raw.weather_daily").fetchone()
+        daily_count = daily_result[0]
+        
+        logger.info(f"Loaded {daily_count:,} rows into raw.weather_daily")
 
 
 def create_staging_table(conn):
-    """Create staging.weather table with transformations."""
-    logger.info("Creating staging.weather table...")
+    """Create staging.weather_hourly table with transformations."""
+    logger.info("Creating staging.weather_hourly table...")
     
     conn.execute("""
-        CREATE OR REPLACE TABLE staging.weather AS
+        CREATE OR REPLACE TABLE staging.weather_hourly AS
         SELECT
             time,
             CAST(time AS DATE) AS date,
@@ -100,11 +113,11 @@ def create_staging_table(conn):
             
             CASE WHEN temperature_2m IS NULL THEN 1 ELSE 0 END AS has_missing_temp,
             CASE WHEN precipitation IS NULL THEN 1 ELSE 0 END AS has_missing_precip
-        FROM raw.weather
+        FROM raw.weather_hourly
     """)
     
-    result = conn.execute("SELECT COUNT(*) FROM staging.weather").fetchone()
-    logger.info(f"Created staging.weather with {result[0]:,} rows")
+    result = conn.execute("SELECT COUNT(*) FROM staging.weather_hourly").fetchone()
+    logger.info(f"Created staging.weather_hourly with {result[0]:,} rows")
 
 
 def create_mart_tables(conn):
@@ -138,7 +151,7 @@ def create_mart_tables(conn):
             SUM(has_missing_temp) AS missing_temp_count,
             
             MAX(ingestion_timestamp) AS last_updated
-        FROM staging.weather
+        FROM staging.weather_hourly
         GROUP BY city_id, city_name, date
         ORDER BY date, city_id
     """)
@@ -153,7 +166,7 @@ def create_mart_tables(conn):
                 city_id,
                 AVG(temperature_2m) AS avg_temp,
                 STDDEV(temperature_2m) AS stddev_temp
-            FROM staging.weather
+            FROM staging.weather_hourly
             GROUP BY city_id
         )
         SELECT
@@ -170,7 +183,7 @@ def create_mart_tables(conn):
                 ELSE FALSE
             END AS is_temp_anomaly
             
-        FROM staging.weather w
+        FROM staging.weather_hourly w
         JOIN stats s ON w.city_id = s.city_id
         WHERE s.stddev_temp IS NOT NULL
         ORDER BY w.time
@@ -203,7 +216,7 @@ def run_health_checks(conn):
             MIN(date) AS min_date,
             MAX(date) AS max_date,
             COUNT(DISTINCT city_id) AS city_count
-        FROM staging.weather
+        FROM staging.weather_hourly
     """).fetchone()
     
     logger.info(f"\nData Coverage:")
@@ -223,7 +236,7 @@ def main():
         ensure_directories()
         conn = create_database()
         create_schemas(conn)
-        create_raw_table(conn)
+        create_raw_tables(conn)
         create_staging_table(conn)
         create_mart_tables(conn)
         run_health_checks(conn)

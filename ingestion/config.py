@@ -49,17 +49,57 @@ def get_incremental_date():
 HOURLY_VARIABLES = [
     "temperature_2m",
     "relative_humidity_2m",
+    "dew_point_2m",
+    "apparent_temperature",
     "precipitation",
-    "wind_speed_10m",
+    "rain",
+    "snowfall",
+    "snow_depth",
+    "weather_code",
+    "pressure_msl",
+    "surface_pressure",
     "cloud_cover",
-    "pressure_msl"
+    "cloud_cover_low",
+    "cloud_cover_mid",
+    "cloud_cover_high",
+    "et0_fao_evapotranspiration",
+    "vapour_pressure_deficit",
+    "wind_speed_10m",
+    "wind_speed_100m",
+    "wind_direction_10m",
+    "wind_direction_100m",
+    "wind_gusts_10m",
+    "soil_temperature_0_to_7cm",
+    "soil_temperature_7_to_28cm",
+    "soil_temperature_28_to_100cm",
+    "soil_temperature_100_to_255cm",
+    "soil_moisture_0_to_7cm",
+    "soil_moisture_7_to_28cm",
+    "soil_moisture_28_to_100cm",
+    "soil_moisture_100_to_255cm"
 ]
 
 DAILY_VARIABLES = [
     "temperature_2m_max",
     "temperature_2m_min",
+    "temperature_2m_mean",
+    "apparent_temperature_max",
+    "apparent_temperature_min",
+    "apparent_temperature_mean",
+    "sunrise",
+    "sunset",
+    "daylight_duration",
+    "sunshine_duration",
     "precipitation_sum",
-    "wind_speed_10m_max"
+    "rain_sum",
+    "snowfall_sum",
+    "precipitation_hours",
+    "weather_code",
+    "wind_speed_10m_max",
+    "wind_gusts_10m_max",
+    "wind_direction_10m_dominant",
+    "shortwave_radiation_sum",
+    "et0_fao_evapotranspiration"
 ]
 
 REQUEST_TIMEOUT = 30
