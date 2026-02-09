@@ -1,0 +1,24 @@
+# python stuff
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# jupyter
+.ipynb_checkpoints/
+
+# data files
+*.csv
+*.xlsx
+*.json
+
+# except outputs we want to keep
+!data/outputs/*.csv
+
+# os files
+.DS_Store
+*.swp
