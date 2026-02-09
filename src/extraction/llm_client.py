@@ -1,59 +1,71 @@
-# send chunks to llm for extraction
+# llm extraction with openai
 import os
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
-def call_llm(prompt, text_chunk, system_prompt=None):
-    """send text to llm and get structured response"""
-    provider = os.getenv('LLM_PROVIDER', 'openai')
-    
-    if provider == 'openai':
-        return call_openai(prompt, text_chunk, system_prompt)
-    elif provider == 'anthropic':
-        return call_anthropic(prompt, text_chunk, system_prompt)
-    else:
-        raise ValueError(f"unknown provider: {provider}")
-
-
-def call_openai(prompt, text_chunk, system_prompt):
-    """openai api call"""
+def extract_with_gpt(prompt, text_chunk, response_format="json"):
+    """extract structured data using gpt-4"""
     from openai import OpenAI
     client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
     
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    
-    messages.append({
-        "role": "user", 
-        "content": f"{prompt}\n\n---\n{text_chunk}"
-    })
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a precise data extraction assistant. Extract ESG metrics from sustainability reports. Return valid JSON only."
+        },
+        {
+            "role": "user",
+            "content": f"{prompt}\n\n---TEXT---\n{text_chunk}\n---END TEXT---"
+        }
+    ]
     
     response = client.chat.completions.create(
-        model=os.getenv('MODEL_NAME', 'gpt-4-turbo-preview'),
+        model="gpt-4o-mini",  # faster and cheaper for extraction
         messages=messages,
-        temperature=0.1
+        temperature=0,
+        response_format={"type": "json_object"} if response_format == "json" else None
     )
     
     return response.choices[0].message.content
 
 
-def call_anthropic(prompt, text_chunk, system_prompt):
-    """anthropic api call"""
-    from anthropic import Anthropic
-    client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+def search_relevant_pages(data, keywords, max_pages=15):
+    """find pages containing keywords - expanded search"""
+    relevant = []
+    scored_pages = []
     
-    message = client.messages.create(
-        model=os.getenv('MODEL_NAME', 'claude-3-sonnet-20240229'),
-        max_tokens=1024,
-        system=system_prompt if system_prompt else "",
-        messages=[{
-            "role": "user",
-            "content": f"{prompt}\n\n---\n{text_chunk}"
-        }],
-        temperature=0.1
-    )
+    for page in data['pages']:
+        text_lower = page['text'].lower()
+        score = 0
+        
+        # score pages by keyword matches
+        for keyword in keywords:
+            count = text_lower.count(keyword.lower())
+            score += count
+        
+        if score > 0:
+            scored_pages.append((score, page))
     
-    return message.content[0].text
+    # sort by score and take top pages
+    scored_pages.sort(reverse=True, key=lambda x: x[0])
+    relevant = [page for _, page in scored_pages[:max_pages]]
+    
+    return relevant
+
+
+def prepare_extraction_context(pages, max_chars=12000):
+    """combine relevant pages into extraction context - increased limit"""
+    context = ""
+    
+    for page in pages:
+        page_text = f"=== Page {page['page']} ===\n{page['text']}\n\n"
+        
+        if len(context) + len(page_text) > max_chars:
+            break
+        
+        context += page_text
+    
+    return context
