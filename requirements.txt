@@ -1,2 +1,19 @@
-# python packages needed
-# add as we go
+# pdf parsing
+pdfplumber>=0.11.0
+
+# llm api calls
+openai>=1.0.0
+anthropic>=0.18.0
+
+# data handling
+pandas>=2.0.0
+numpy>=1.24.0
+
+# visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# utilities
+python-dotenv>=1.0.0
+tqdm>=4.65.0

@@ -11,14 +11,16 @@ venv/
 # jupyter
 .ipynb_checkpoints/
 
-# data files
-*.csv
-*.xlsx
-*.json
+# data files - processed outputs only
+data/outputs/*.csv
+data/outputs/*.json
 
-# except outputs we want to keep
-!data/outputs/*.csv
+# keep raw and processed data
+!data/raw/
+!data/processed/
 
 # os files
 .DS_Store
 *.swp
+
+.env

@@ -1,0 +1,136 @@
+{
+  "total_processed": 17,
+  "skipped": 7,
+  "failed": [],
+  "companies": {
+    "Amazon": {
+      "2021": {
+        "status": "skipped",
+        "output_file": "data/raw/Amazon_2021.json"
+      },
+      "2022": {
+        "status": "skipped",
+        "output_file": "data/raw/Amazon_2022.json"
+      },
+      "2023": {
+        "status": "skipped",
+        "output_file": "data/raw/Amazon_2023.json"
+      }
+    },
+    "BP": {
+      "2021": {
+        "status": "skipped",
+        "output_file": "data/raw/BP_2021.json"
+      },
+      "2022": {
+        "status": "skipped",
+        "output_file": "data/raw/BP_2022.json"
+      },
+      "2023": {
+        "status": "skipped",
+        "output_file": "data/raw/BP_2023.json"
+      }
+    },
+    "Coca Cola": {
+      "2021": {
+        "status": "skipped",
+        "output_file": "data/raw/Coca Cola_2021.json"
+      },
+      "2022": {
+        "status": "success",
+        "pages": 88,
+        "output_file": "data/raw/Coca Cola_2022.json"
+      },
+      "2023": {
+        "status": "success",
+        "pages": 12,
+        "output_file": "data/raw/Coca Cola_2023.json"
+      }
+    },
+    "ENGIE": {
+      "2021": {
+        "status": "success",
+        "pages": 60,
+        "output_file": "data/raw/ENGIE_2021.json"
+      },
+      "2022": {
+        "status": "success",
+        "pages": 56,
+        "output_file": "data/raw/ENGIE_2022.json"
+      },
+      "2023": {
+        "status": "success",
+        "pages": 114,
+        "output_file": "data/raw/ENGIE_2023.json"
+      }
+    },
+    "Intel": {
+      "2021": {
+        "status": "success",
+        "pages": 102,
+        "output_file": "data/raw/Intel_2021.json"
+      },
+      "2022": {
+        "status": "success",
+        "pages": 116,
+        "output_file": "data/raw/Intel_2022.json"
+      },
+      "2023": {
+        "status": "success",
+        "pages": 123,
+        "output_file": "data/raw/Intel_2023.json"
+      }
+    },
+    "Nestle": {
+      "2021": {
+        "status": "success",
+        "pages": 59,
+        "output_file": "data/raw/Nestle_2021.json"
+      },
+      "2022": {
+        "status": "success",
+        "pages": 63,
+        "output_file": "data/raw/Nestle_2022.json"
+      },
+      "2023": {
+        "status": "success",
+        "pages": 89,
+        "output_file": "data/raw/Nestle_2023.json"
+      }
+    },
+    "SSE": {
+      "2021": {
+        "status": "success",
+        "pages": 57,
+        "output_file": "data/raw/SSE_2021.json"
+      },
+      "2022": {
+        "status": "success",
+        "pages": 55,
+        "output_file": "data/raw/SSE_2022.json"
+      },
+      "2023": {
+        "status": "success",
+        "pages": 51,
+        "output_file": "data/raw/SSE_2023.json"
+      }
+    },
+    "Shell": {
+      "2021": {
+        "status": "success",
+        "pages": 93,
+        "output_file": "data/raw/Shell_2021.json"
+      },
+      "2022": {
+        "status": "success",
+        "pages": 91,
+        "output_file": "data/raw/Shell_2022.json"
+      },
+      "2023": {
+        "status": "success",
+        "pages": 98,
+        "output_file": "data/raw/Shell_2023.json"
+      }
+    }
+  }
+}
