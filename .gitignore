@@ -17,6 +17,9 @@ airflow/logs/
 airflow/*.pid
 airflow/*.err
 airflow/*.log
+airflow/.env
+airflow/plugins/
+airflow/data/
 
 # DuckDB
 *.db
