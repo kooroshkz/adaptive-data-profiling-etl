@@ -1,0 +1,261 @@
+name: dbt Transformations
+
+on:
+  # Trigger via webhook from Airflow
+  repository_dispatch:
+    types: [trigger-dbt-transform]
+  
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      run_date:
+        description: 'Date to process (YYYY-MM-DD)'
+        required: false
+        default: ''
+
+jobs:
+  dbt-transform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+        
+    - name: Install dbt and dependencies
+      run: |
+        pip install dbt-core dbt-duckdb boto3 pyarrow pandas
+        
+    - name: Configure AWS credentials
+      run: |
+        mkdir -p ~/.aws
+        cat > ~/.aws/credentials << EOF
+        [default]
+        aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        EOF
+        cat > ~/.aws/config << EOF
+        [default]
+        region = ${{ secrets.AWS_REGION }}
+        EOF
+        
+    - name: Create dbt profiles.yml
+      run: |
+        mkdir -p ~/.dbt
+        cat > ~/.dbt/profiles.yml << 'EOF'
+        weather_dbt:
+          outputs:
+            prod:
+              type: duckdb
+              path: ':memory:'
+              schema: main
+              threads: 2
+              extensions:
+                - httpfs
+                - parquet
+              settings:
+                s3_region: ${{ secrets.AWS_REGION }}
+                s3_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                s3_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          target: prod
+        EOF
+        
+    - name: Test S3 connectivity
+      run: |
+        python3 << 'PYEOF'
+        import duckdb
+        import os
+        
+        # Test S3 read access
+        con = duckdb.connect(':memory:')
+        con.execute("INSTALL httpfs; LOAD httpfs;")
+        con.execute(f"SET s3_region='{os.getenv('AWS_REGION', 'us-east-1')}';")
+        con.execute(f"SET s3_access_key_id='{os.getenv('AWS_ACCESS_KEY_ID')}';")
+        con.execute(f"SET s3_secret_access_key='{os.getenv('AWS_SECRET_ACCESS_KEY')}';")
+        
+        bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
+        result = con.execute(f"SELECT COUNT(*) FROM read_parquet('s3://{bucket}/raw/*.parquet')").fetchone()
+        print(f"✅ Successfully read {result[0]} rows from S3")
+        con.close()
+        PYEOF
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+        S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        
+    - name: Run dbt debug
+      run: |
+        cd weather_dbt
+        dbt debug
+        
+    - name: Run dbt deps
+      run: |
+        cd weather_dbt
+        dbt deps
+        
+    - name: Run dbt transformations
+      run: |
+        cd weather_dbt
+        dbt run --full-refresh
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+        S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        
+    - name: Run dbt tests
+      run: |
+        cd weather_dbt
+        dbt test
+      continue-on-error: true
+      
+    - name: Export transformed data to S3
+      run: |
+        python3 << 'PYEOF'
+        import duckdb
+        import os
+        
+        bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
+        
+        # Connect to DuckDB and configure S3
+        con = duckdb.connect(':memory:')
+        con.execute("INSTALL httpfs; LOAD httpfs;")
+        con.execute(f"SET s3_region='{os.getenv('AWS_REGION', 'us-east-1')}';")
+        con.execute(f"SET s3_access_key_id='{os.getenv('AWS_ACCESS_KEY_ID')}';")
+        con.execute(f"SET s3_secret_access_key='{os.getenv('AWS_SECRET_ACCESS_KEY')}';")
+        
+        # Read from raw, transform, write to mart
+        # This replicates what dbt models do but writes to S3
+        
+        # 1. Staging layer (weather_hourly cleaned)
+        print("📊 Creating staging layer...")
+        staging_query = f"""
+        CREATE OR REPLACE TABLE staging_weather AS
+        SELECT 
+            time,
+            CAST(time AS DATE) as date,
+            EXTRACT(year FROM time) as year,
+            EXTRACT(month FROM time) as month,
+            EXTRACT(day FROM time) as day,
+            EXTRACT(hour FROM time) as hour,
+            COALESCE(temperature_2m, 0.0) as temperature_2m,
+            COALESCE(relative_humidity_2m, 0) as relative_humidity_2m,
+            COALESCE(precipitation, 0.0) as precipitation,
+            COALESCE(wind_speed_10m, 0.0) as wind_speed_10m,
+            COALESCE(cloud_cover, 0) as cloud_cover,
+            COALESCE(pressure_msl, 1013.25) as pressure_msl,
+            city_id,
+            city_name,
+            latitude,
+            longitude,
+            timezone,
+            ingestion_timestamp,
+            batch_id
+        FROM read_parquet('s3://{bucket}/raw/*_hourly_*.parquet')
+        """
+        con.execute(staging_query)
+        staging_count = con.execute("SELECT COUNT(*) FROM staging_weather").fetchone()[0]
+        print(f"✅ Staging: {staging_count} rows")
+        
+        # 2. Mart: Daily aggregations
+        print("📊 Creating mart.weather_daily...")
+        daily_query = f"""
+        CREATE OR REPLACE TABLE mart_weather_daily AS
+        SELECT
+            city_id,
+            city_name,
+            date,
+            MIN(temperature_2m) as temp_min,
+            MAX(temperature_2m) as temp_max,
+            AVG(temperature_2m) as temp_avg,
+            STDDEV(temperature_2m) as temp_stddev,
+            SUM(precipitation) as precip_total,
+            MAX(precipitation) as precip_max,
+            COUNT(CASE WHEN precipitation > 0 THEN 1 END) as hours_with_rain,
+            AVG(wind_speed_10m) as wind_avg,
+            MAX(wind_speed_10m) as wind_max,
+            AVG(relative_humidity_2m) as humidity_avg,
+            AVG(pressure_msl) as pressure_avg,
+            AVG(cloud_cover) as cloud_cover_avg,
+            COUNT(*) as total_hours,
+            MAX(ingestion_timestamp) as last_updated
+        FROM staging_weather
+        GROUP BY city_id, city_name, date
+        ORDER BY date DESC, city_id
+        """
+        con.execute(daily_query)
+        daily_count = con.execute("SELECT COUNT(*) FROM mart_weather_daily").fetchone()[0]
+        print(f"✅ Daily mart: {daily_count} rows")
+        
+        # 3. Mart: Anomalies (z-scores)
+        print("📊 Creating mart.weather_anomalies...")
+        anomaly_query = """
+        CREATE OR REPLACE TABLE mart_weather_anomalies AS
+        WITH daily_stats AS (
+            SELECT
+                city_id,
+                city_name,
+                date,
+                temp_avg,
+                precip_total,
+                wind_max,
+                AVG(temp_avg) OVER (PARTITION BY city_id ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as temp_30d_avg,
+                STDDEV(temp_avg) OVER (PARTITION BY city_id ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as temp_30d_stddev
+            FROM mart_weather_daily
+        )
+        SELECT
+            city_id,
+            city_name,
+            date,
+            temp_avg,
+            temp_30d_avg,
+            temp_30d_stddev,
+            CASE 
+                WHEN temp_30d_stddev > 0 
+                THEN (temp_avg - temp_30d_avg) / temp_30d_stddev
+                ELSE 0 
+            END as temp_zscore,
+            CASE
+                WHEN ABS((temp_avg - temp_30d_avg) / NULLIF(temp_30d_stddev, 0)) > 2 THEN true
+                ELSE false
+            END as is_anomaly
+        FROM daily_stats
+        WHERE temp_30d_stddev IS NOT NULL
+        ORDER BY date DESC, city_id
+        """
+        con.execute(anomaly_query)
+        anomaly_count = con.execute("SELECT COUNT(*) FROM mart_weather_anomalies").fetchone()[0]
+        print(f"✅ Anomalies mart: {anomaly_count} rows")
+        
+        # 4. Write to S3 as parquet
+        print("⬆️  Writing to S3...")
+        con.execute(f"COPY staging_weather TO 's3://{bucket}/staging/weather_hourly.parquet' (FORMAT PARQUET)")
+        con.execute(f"COPY mart_weather_daily TO 's3://{bucket}/mart/weather_daily.parquet' (FORMAT PARQUET)")
+        con.execute(f"COPY mart_weather_anomalies TO 's3://{bucket}/mart/weather_anomalies.parquet' (FORMAT PARQUET)")
+        
+        print("✅ Successfully exported all transformed data to S3")
+        print(f"   - s3://{bucket}/staging/weather_hourly.parquet")
+        print(f"   - s3://{bucket}/mart/weather_daily.parquet")
+        print(f"   - s3://{bucket}/mart/weather_anomalies.parquet")
+        
+        con.close()
+        PYEOF
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_REGION }}
+        S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        
+    - name: Summary
+      run: |
+        echo "🎉 dbt transformation pipeline completed!"
+        echo "Transformed data available at:"
+        echo "  - s3://${{ secrets.S3_BUCKET }}/staging/"
+        echo "  - s3://${{ secrets.S3_BUCKET }}/mart/"

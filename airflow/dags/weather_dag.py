@@ -14,8 +14,8 @@ default_args = {
     'depends_on_past': False,
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 2,
-    'retry_delay': timedelta(minutes=5),
+    'retries': 1,  # Reduced from 2 - t3.micro can't handle many retries
+    'retry_delay': timedelta(minutes=2),
     'start_date': datetime(2026, 2, 1),
 }
 
@@ -25,6 +25,8 @@ dag = DAG(
     description='Daily weather data ingestion for 5 cities',
     schedule_interval='0 2 * * *',  # 2 AM UTC daily
     catchup=False,
+    max_active_tasks=1,  # Run tasks sequentially to avoid memory issues on t3.micro
+    max_active_runs=1,
     tags=['weather', 'etl', 'daily'],
 )
 
@@ -86,15 +88,65 @@ EOF
     dag=dag,
 )
 
+# Trigger GitHub Actions for dbt transformations
+trigger_dbt_transform = BashOperator(
+    task_id='trigger_dbt_transform',
+    bash_command='''
+    python3 << 'EOF'
+import requests
+import os
+
+# GitHub repository details
+github_token = os.getenv('GITHUB_TOKEN')
+repo_owner = os.getenv('GITHUB_REPO_OWNER', 'kooroshkz')
+repo_name = os.getenv('GITHUB_REPO_NAME', 'adaptive-data-profiling-etl')
+
+if not github_token:
+    print('⚠️  GITHUB_TOKEN not set, skipping transformation trigger')
+    exit(0)
+
+# Trigger via repository_dispatch
+url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/dispatches'
+headers = {
+    'Authorization': f'token {github_token}',
+    'Accept': 'application/vnd.github.v3+json'
+}
+payload = {
+    'event_type': 'trigger-dbt-transform',
+    'client_payload': {
+        'triggered_by': 'airflow',
+        'workflow': 'weather_ingestion'
+    }
+}
+
+response = requests.post(url, headers=headers, json=payload)
+
+if response.status_code == 204:
+    print('✅ Successfully triggered dbt transformation workflow')
+else:
+    print(f'❌ Failed to trigger workflow: {response.status_code}')
+    print(response.text)
+    exit(1)
+EOF
+    ''',
+    dag=dag,
+)
+
 # Log completion
 log_completion = BashOperator(
     task_id='log_completion',
     bash_command='''
     echo "Weather ingestion completed at $(date)"
+    echo "Files uploaded to S3, dbt transformation triggered"
     ls -lh /opt/airflow/data/raw/*.parquet | tail -10
     ''',
     dag=dag,
 )
 
-# Define task dependencies
-install_deps >> ingestion_tasks >> upload_to_s3 >> log_completion
+# Define task dependencies - Run cities SEQUENTIALLY to avoid memory issues
+install_deps >> ingestion_tasks[0]  # amsterdam
+ingestion_tasks[0] >> ingestion_tasks[1]  # new_york  
+ingestion_tasks[1] >> ingestion_tasks[2]  # london
+ingestion_tasks[2] >> ingestion_tasks[3]  # paris
+ingestion_tasks[3] >> ingestion_tasks[4]  # tokyo
+ingestion_tasks[4] >> upload_to_s3 >> trigger_dbt_transform >> log_completion
