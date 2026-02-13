@@ -14,8 +14,8 @@ default_args = {
     'depends_on_past': False,
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 1,  # Reduced from 2 - t3.micro can't handle many retries
-    'retry_delay': timedelta(minutes=2),
+    'retries': 2,
+    'retry_delay': timedelta(minutes=5),
     'start_date': datetime(2026, 2, 1),
 }
 
@@ -25,7 +25,7 @@ dag = DAG(
     description='Daily weather data ingestion for 5 cities',
     schedule_interval='0 2 * * *',  # 2 AM UTC daily
     catchup=False,
-    max_active_tasks=1,  # Run tasks sequentially to avoid memory issues on t3.micro
+    max_active_tasks=2,  # Allow 2 parallel tasks max to avoid overwhelming t3.micro
     max_active_runs=1,
     tags=['weather', 'etl', 'daily'],
 )
@@ -43,14 +43,17 @@ install_deps = BashOperator(
 )
 
 # Weather ingestion tasks for each city
+# Priority weights stagger task starts (higher priority = starts first)
 ingestion_tasks = []
-for city in CITIES:
+for idx, city in enumerate(CITIES):
     task = BashOperator(
         task_id=f'ingest_{city}',
         bash_command=f'''
+        sleep 1  # 1-second delay to rate-limit starts
         cd /opt/airflow/scripts
         python weather_ingest.py --city {city} --mode incremental
         ''',
+        priority_weight=10 - idx,  # amsterdam=10, new_york=9, london=8, paris=7, tokyo=6
         dag=dag,
     )
     ingestion_tasks.append(task)
@@ -143,10 +146,5 @@ log_completion = BashOperator(
     dag=dag,
 )
 
-# Define task dependencies - Run cities SEQUENTIALLY to avoid memory issues
-install_deps >> ingestion_tasks[0]  # amsterdam
-ingestion_tasks[0] >> ingestion_tasks[1]  # new_york  
-ingestion_tasks[1] >> ingestion_tasks[2]  # london
-ingestion_tasks[2] >> ingestion_tasks[3]  # paris
-ingestion_tasks[3] >> ingestion_tasks[4]  # tokyo
-ingestion_tasks[4] >> upload_to_s3 >> trigger_dbt_transform >> log_completion
+# Define task dependencies
+install_deps >> ingestion_tasks >> upload_to_s3 >> trigger_dbt_transform >> log_completion
