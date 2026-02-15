@@ -1,6 +1,6 @@
 with source as (
-    -- Read directly from S3 parquet files
-    select * from read_parquet('s3://{{ env_var("S3_BUCKET", "weather-data-koorosh-thesis") }}/raw/*_hourly_*.parquet')
+    -- Read from Hive-partitioned S3 parquet files: city=amsterdam/hourly_*.parquet
+    select * from read_parquet('s3://{{ env_var("S3_BUCKET", "weather-data-koorosh-thesis") }}/raw/city=*/hourly_*.parquet', hive_partitioning = true)
 ),
 
 transformed as (

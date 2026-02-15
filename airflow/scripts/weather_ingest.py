@@ -101,14 +101,16 @@ class WeatherIngestion:
         return df_hourly, df_daily
         
     def save_to_parquet(self, df_hourly: pd.DataFrame, df_daily: pd.DataFrame, start_date: str, end_date: str):
-        """Save DataFrames to Parquet files."""
-        os.makedirs(RAW_DATA_PATH, exist_ok=True)
+        """Save DataFrames to Parquet files with Hive-style partitioning."""
+        # Create city partition directory: data/raw/city=amsterdam/
+        city_partition_path = os.path.join(RAW_DATA_PATH, f"city={self.city_id}")
+        os.makedirs(city_partition_path, exist_ok=True)
         
-        hourly_filename = f"{self.city_id}_hourly_{start_date}_{end_date}_{self.batch_id}.parquet"
-        hourly_filepath = os.path.join(RAW_DATA_PATH, hourly_filename)
+        hourly_filename = f"hourly_{start_date}_{end_date}_{self.batch_id}.parquet"
+        hourly_filepath = os.path.join(city_partition_path, hourly_filename)
         
-        daily_filename = f"{self.city_id}_daily_{start_date}_{end_date}_{self.batch_id}.parquet"
-        daily_filepath = os.path.join(RAW_DATA_PATH, daily_filename)
+        daily_filename = f"daily_{start_date}_{end_date}_{self.batch_id}.parquet"
+        daily_filepath = os.path.join(city_partition_path, daily_filename)
         
         df_hourly.to_parquet(hourly_filepath, engine='pyarrow', compression='snappy', index=False)
         df_daily.to_parquet(daily_filepath, engine='pyarrow', compression='snappy', index=False)

@@ -234,16 +234,33 @@ jobs:
         anomaly_count = con.execute("SELECT COUNT(*) FROM mart_weather_anomalies").fetchone()[0]
         print(f"✅ Anomalies mart: {anomaly_count} rows")
         
-        # 4. Write to S3 as parquet
-        print("⬆️  Writing to S3...")
-        con.execute(f"COPY staging_weather TO 's3://{bucket}/staging/weather_hourly.parquet' (FORMAT PARQUET)")
-        con.execute(f"COPY mart_weather_daily TO 's3://{bucket}/mart/weather_daily.parquet' (FORMAT PARQUET)")
-        con.execute(f"COPY mart_weather_anomalies TO 's3://{bucket}/mart/weather_anomalies.parquet' (FORMAT PARQUET)")
+        # 4. Write to S3 with Hive partitioning (per city)
+        print("⬆️  Writing to S3 with Hive partitioning...")
+        cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
         
-        print("✅ Successfully exported all transformed data to S3")
-        print(f"   - s3://{bucket}/staging/weather_hourly.parquet")
-        print(f"   - s3://{bucket}/mart/weather_daily.parquet")
-        print(f"   - s3://{bucket}/mart/weather_anomalies.parquet")
+        # Export staging data per city
+        for city in cities:
+            con.execute(f"""COPY (
+                SELECT * FROM staging_weather WHERE city_id = '{city}'
+            ) TO 's3://{bucket}/staging/city={city}/weather_hourly.parquet' (FORMAT PARQUET)""")
+            print(f"   ✓ staging/city={city}/weather_hourly.parquet")
+        
+        # Export mart daily aggregations per city
+        for city in cities:
+            con.execute(f"""COPY (
+                SELECT * FROM mart_weather_daily WHERE city_id = '{city}'
+            ) TO 's3://{bucket}/mart/daily/city={city}/weather_daily.parquet' (FORMAT PARQUET)""")
+            print(f"   ✓ mart/daily/city={city}/weather_daily.parquet")
+        
+        # Export mart anomalies per city
+        for city in cities:
+            con.execute(f"""COPY (
+                SELECT * FROM mart_weather_anomalies WHERE city_id = '{city}'
+            ) TO 's3://{bucket}/mart/anomalies/city={city}/weather_anomalies.parquet' (FORMAT PARQUET)""")
+            print(f"   ✓ mart/anomalies/city={city}/weather_anomalies.parquet")
+        
+        print(f"\n✅ Successfully exported all data to S3 with Hive partitioning")
+        print(f"   Total: {len(cities) * 3} partitioned parquet files")
         
         con.close()
         PYEOF
@@ -256,6 +273,9 @@ jobs:
     - name: Summary
       run: |
         echo "🎉 dbt transformation pipeline completed!"
-        echo "Transformed data available at:"
-        echo "  - s3://${{ secrets.S3_BUCKET }}/staging/"
-        echo "  - s3://${{ secrets.S3_BUCKET }}/mart/"
+        echo "Transformed data available with Hive partitioning:"
+        echo "  - s3://${{ secrets.S3_BUCKET }}/staging/city=<city>/weather_hourly.parquet"
+        echo "  - s3://${{ secrets.S3_BUCKET }}/mart/daily/city=<city>/weather_daily.parquet"
+        echo "  - s3://${{ secrets.S3_BUCKET }}/mart/anomalies/city=<city>/weather_anomalies.parquet"
+        echo ""
+        echo "Cities: amsterdam, new_york, london, paris, tokyo"

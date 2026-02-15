@@ -78,12 +78,16 @@ data_dir = Path('/opt/airflow/data/raw')
 uploaded = 0
 
 if data_dir.exists():
-    for parquet_file in data_dir.glob('*.parquet'):
-        s3_key = f'raw/{parquet_file.name}'
-        print(f'Uploading {parquet_file.name} to s3://{s3_bucket}/{s3_key}')
-        s3_client.upload_file(str(parquet_file), s3_bucket, s3_key)
-        uploaded += 1
-    print(f'✅ Uploaded {uploaded} files to S3')
+    # Upload maintaining Hive partition structure: city=amsterdam/*.parquet
+    for city_partition in data_dir.glob('city=*'):
+        if city_partition.is_dir():
+            for parquet_file in city_partition.glob('*.parquet'):
+                # Preserve directory structure: raw/city=amsterdam/hourly_xxx.parquet
+                s3_key = f'raw/{city_partition.name}/{parquet_file.name}'
+                print(f'Uploading {city_partition.name}/{parquet_file.name} to s3://{s3_bucket}/{s3_key}')
+                s3_client.upload_file(str(parquet_file), s3_bucket, s3_key)
+                uploaded += 1
+    print(f'✅ Uploaded {uploaded} partitioned files to S3')
 else:
     print(f'⚠️  Data directory {data_dir} does not exist')
 EOF
