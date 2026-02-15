@@ -1,5 +1,5 @@
-# Optimized for t3.micro (1GB RAM)
-# Reduces webserver workers and parallelism
+# Optimized for t3.small (2GB RAM, 2 vCPUs)
+# Balanced: Won't crash like standard, won't be slow like t3micro
 
 x-airflow-common:
   &airflow-common
@@ -14,13 +14,13 @@ x-airflow-common:
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
-    # Memory optimizations for t3.micro
-    AIRFLOW__WEBSERVER__WORKERS: 1  # Reduced to 1 for t3.micro
-    AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: 600  # 10 min for slow t3.micro startup
-    AIRFLOW__CORE__PARALLELISM: 8    # Reduced from 32
-    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: 1
+    # Memory optimizations for t3.small (2GB RAM, 2 vCPUs)
+    AIRFLOW__WEBSERVER__WORKERS: 2  # Use both vCPUs
+    AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: 300  # 5 min timeout
+    AIRFLOW__CORE__PARALLELISM: 16    # 2x the t3micro (we have 2x CPU)
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: 2  # Run 2 tasks simultaneously
     AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: 1
-    AIRFLOW__SCHEDULER__PARSING_PROCESSES: 1
+    AIRFLOW__SCHEDULER__PARSING_PROCESSES: 2  # Use both cores
     # AWS credentials
     AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
     AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
@@ -56,11 +56,11 @@ services:
       retries: 5
       start_period: 5s
     restart: unless-stopped
-    # Memory limit for postgres
+    # Memory limit for postgres (more than t3micro)
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 384M  # 256M → 384M (we have 2GB total)
 
   airflow-webserver:
     <<: *airflow-common
@@ -72,7 +72,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 180s  # 3 min for t3.micro slow startup
+      start_period: 120s  # 2 min (faster than t3micro's 3min)
     restart: unless-stopped
     depends_on:
       <<: *airflow-common-depends-on
@@ -82,7 +82,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 896M  # ~900MB (leave room for scheduler)
 
   airflow-scheduler:
     <<: *airflow-common
@@ -92,17 +92,17 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 180s  # 3 min for t3.micro slow startup
+      start_period: 120s  # 2 min (faster than t3micro's 3min)
     restart: unless-stopped
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
-    # Memory limit for scheduler
+    # Memory limit for scheduler (increased for more tasks)
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 768M  # 512M → 768M (handle 16 parallel tasks)
 
   airflow-init:
     <<: *airflow-common

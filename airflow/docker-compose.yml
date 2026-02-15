@@ -17,6 +17,7 @@ x-airflow-common:
     AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
     AWS_REGION: ${AWS_REGION}
     S3_BUCKET: ${S3_BUCKET}
+    MOTHERDUCK_TOKEN: ${MOTHERDUCK_TOKEN}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
