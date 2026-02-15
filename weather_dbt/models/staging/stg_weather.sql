@@ -1,5 +1,6 @@
 with source as (
-    select * from {{ source('raw', 'weather_hourly') }}
+    -- Read directly from S3 parquet files
+    select * from read_parquet('s3://{{ env_var("S3_BUCKET", "weather-data-koorosh-thesis") }}/raw/*_hourly_*.parquet')
 ),
 
 transformed as (

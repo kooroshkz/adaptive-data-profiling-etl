@@ -2,11 +2,14 @@ version: 2
 
 sources:
   - name: raw
-    description: Raw weather data from Open-Meteo API stored in Parquet files
-    schema: raw
+    description: Raw weather data from Open-Meteo API stored in S3 Parquet files
+    meta:
+      external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/*_hourly_*.parquet')"
     tables:
       - name: weather_hourly
         description: Hourly weather measurements ingested from API
+        meta:
+          external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/*_hourly_*.parquet')"
         columns:
           - name: time
             description: Timestamp of measurement
@@ -45,6 +48,8 @@ sources:
       
       - name: weather_daily
         description: Daily weather aggregates from Open-Meteo API
+        meta:
+          external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/*_daily_*.parquet')"
         columns:
           - name: time
             description: Date of measurement
