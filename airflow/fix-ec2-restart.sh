@@ -12,7 +12,7 @@ echo ""
 
 # Stop containers
 echo "1. Stopping containers..."
-docker-compose -f docker-compose.t3micro.yml down
+docker-compose down
 
 # Pull latest changes
 echo ""
@@ -21,20 +21,20 @@ git pull origin main
 
 # Start containers
 echo ""
-echo "3. Starting containers (this will take ~5-10 minutes)..."
-docker-compose -f docker-compose.t3micro.yml up -d
+echo "3. Starting containers (this will take ~2-3 minutes)..."
+docker-compose up -d
 
 echo ""
 echo "=== Containers started! ==="
 echo ""
-echo "IMPORTANT: The webserver needs up to 10 minutes to fully start on t3.micro."
+echo "IMPORTANT: The webserver needs up to 2-3 minutes to fully start on t3.small."
 echo "Please wait patiently before checking status."
 echo ""
 echo "Monitor startup progress:"
-echo "  docker-compose -f docker-compose.t3micro.yml logs -f airflow-webserver"
+echo "  docker-compose logs -f airflow-webserver"
 echo ""
-echo "Check status after 10 minutes:"
-echo "  docker-compose -f docker-compose.t3micro.yml ps"
+echo "Check status after 3 minutes:"
+echo "  docker-compose ps"
 echo "  curl http://localhost:8080/health"
 echo ""
 echo "The webserver is ready when you see:"
