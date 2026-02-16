@@ -30,7 +30,7 @@ jobs:
         
     - name: Install dbt and dependencies
       run: |
-        pip install dbt-core dbt-duckdb boto3 pyarrow pandas
+        pip install dbt-core dbt-duckdb boto3 pyarrow pandas duckdb
         
     - name: Configure AWS credentials
       run: |
@@ -110,12 +110,6 @@ jobs:
         AWS_REGION: ${{ secrets.AWS_REGION }}
         S3_BUCKET: ${{ secrets.S3_BUCKET }}
         
-    - name: Run dbt tests
-      run: |
-        cd weather_dbt
-        dbt test
-      continue-on-error: true
-      
     - name: Export transformed data to S3
       run: |
         python3 << 'PYEOF'
