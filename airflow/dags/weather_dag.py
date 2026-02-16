@@ -7,7 +7,14 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-import os
+from airflow.utils.trigger_rule import TriggerRule
+from dag_utils import (
+    send_email_notification,
+    build_failure_email,
+    trigger_github_workflow,
+    refresh_motherduck_tables,
+    upload_parquet_to_s3
+)
 
 default_args = {
     'owner': 'koorosh',
@@ -58,141 +65,49 @@ for idx, city in enumerate(CITIES):
     )
     ingestion_tasks.append(task)
 
-# Upload to S3 using Python boto3
-upload_to_s3 = BashOperator(
+# Upload to S3
+def upload_task():
+    """Upload parquet files to S3"""
+    upload_parquet_to_s3('/opt/airflow/data/raw', 'raw')
+
+upload_to_s3 = PythonOperator(
     task_id='upload_to_s3',
-    bash_command='''
-    python3 << 'EOF'
-import boto3
-import os
-from pathlib import Path
-
-s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
-s3_client = boto3.client('s3',
-    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-    region_name=os.getenv('AWS_REGION', 'eu-west-1')
-)
-
-data_dir = Path('/opt/airflow/data/raw')
-uploaded = 0
-
-if data_dir.exists():
-    # Upload maintaining Hive partition structure: city=amsterdam/*.parquet
-    for city_partition in data_dir.glob('city=*'):
-        if city_partition.is_dir():
-            for parquet_file in city_partition.glob('*.parquet'):
-                # Preserve directory structure: raw/city=amsterdam/hourly_xxx.parquet
-                s3_key = f'raw/{city_partition.name}/{parquet_file.name}'
-                print(f'Uploading {city_partition.name}/{parquet_file.name} to s3://{s3_bucket}/{s3_key}')
-                s3_client.upload_file(str(parquet_file), s3_bucket, s3_key)
-                uploaded += 1
-    print(f'Uploaded {uploaded} partitioned files to S3')
-else:
-    print(f'Data directory {data_dir} does not exist')
-EOF
-    ''',
+    python_callable=upload_task,
     dag=dag,
 )
 
 # Trigger GitHub Actions for dbt transformations
-trigger_dbt_transform = BashOperator(
-    task_id='trigger_dbt_transform',
-    bash_command='''
-    python3 << 'EOF'
-import requests
-import os
-
-# GitHub repository details
-github_token = os.getenv('GITHUB_TOKEN')
-repo_owner = os.getenv('GITHUB_REPO_OWNER', 'kooroshkz')
-repo_name = os.getenv('GITHUB_REPO_NAME', 'adaptive-data-profiling-etl')
-
-if not github_token:
-    print('GITHUB_TOKEN not set, skipping transformation trigger')
-    exit(0)
-
-# Trigger via repository_dispatch
-url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/dispatches'
-headers = {
-    'Authorization': f'token {github_token}',
-    'Accept': 'application/vnd.github.v3+json'
-}
-payload = {
-    'event_type': 'trigger-dbt-transform',
-    'client_payload': {
+def trigger_dbt():
+    """Trigger dbt transformation workflow in GitHub Actions"""
+    payload = {
         'triggered_by': 'airflow',
         'workflow': 'weather_ingestion'
     }
-}
+    success = trigger_github_workflow('trigger-dbt-transform', payload)
+    if not success:
+        raise Exception('Failed to trigger GitHub Actions workflow')
 
-response = requests.post(url, headers=headers, json=payload)
-
-if response.status_code == 204:
-    print('Successfully triggered dbt transformation workflow')
-else:
-    print(f'Failed to trigger workflow: {response.status_code}')
-    print(response.text)
-    exit(1)
-EOF
-    ''',
+trigger_dbt_transform = PythonOperator(
+    task_id='trigger_dbt_transform',
+    python_callable=trigger_dbt,
     dag=dag,
 )
 
-# Refresh MotherDuck RAW tables (after S3 upload, before dbt)
-refresh_motherduck_raw = BashOperator(
+# Refresh MotherDuck RAW tables
+def refresh_raw_tables():
+    """Refresh MotherDuck raw weather data tables from S3"""
+    import os
+    cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
+    s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
+    
+    def s3_pattern(city):
+        return f's3://{s3_bucket}/raw/city={city}/hourly_*.parquet'
+    
+    refresh_motherduck_tables('raw_weather_data', cities, s3_pattern)
+
+refresh_motherduck_raw = PythonOperator(
     task_id='refresh_motherduck_raw',
-    bash_command='''
-    python3 << 'EOF'
-import duckdb
-import os
-
-motherduck_token = os.getenv('MOTHERDUCK_TOKEN')
-s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
-aws_key = os.getenv('AWS_ACCESS_KEY_ID')
-aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY')
-aws_region = os.getenv('AWS_REGION', 'us-east-1')
-
-if not motherduck_token:
-    print('MOTHERDUCK_TOKEN not set, skipping MotherDuck raw refresh')
-    print('Set MOTHERDUCK_TOKEN in .env to enable auto-refresh')
-    exit(0)
-
-print('Connecting to MotherDuck...')
-
-# Connect to MotherDuck
-con = duckdb.connect(f'md:?motherduck_token={motherduck_token}')
-
-# Set AWS credentials
-con.execute(f"SET s3_access_key_id='{aws_key}';")
-con.execute(f"SET s3_secret_access_key='{aws_secret}';")
-con.execute(f"SET s3_region='{aws_region}';")
-
-print('Refreshing RAW weather data tables...')
-
-cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
-
-# Refresh raw_weather_data tables
-con.execute('CREATE DATABASE IF NOT EXISTS raw_weather_data;')
-con.execute('USE raw_weather_data;')
-
-for city in cities:
-    sql = f"""
-    CREATE OR REPLACE TABLE {city} AS 
-    SELECT * FROM read_parquet(
-        's3://{s3_bucket}/raw/city={city}/hourly_*.parquet', 
-        hive_partitioning=true
-    );
-    """
-    con.execute(sql)
-    count = con.execute(f'SELECT COUNT(*) FROM {city};').fetchone()[0]
-    print(f'   ✓ raw_weather_data.{city}: {count} rows')
-
-con.close()
-print('MotherDuck RAW tables refreshed successfully!')
-print('Next: Triggering dbt transformations...')
-EOF
-    ''',
+    python_callable=refresh_raw_tables,
     dag=dag,
 )
 
@@ -209,6 +124,25 @@ log_completion = BashOperator(
     dag=dag,
 )
 
+# Failure notification function
+def send_failure_notification(**context):
+    """Send email notification on task failure"""
+    subject, body = build_failure_email(context)
+    if subject and body:
+        send_email_notification(subject, body)
+    else:
+        print('No failed tasks found')
+
+# Failure notification task
+notify_failure = PythonOperator(
+    task_id='notify_failure',
+    python_callable=send_failure_notification,
+    trigger_rule=TriggerRule.ONE_FAILED,
+    provide_context=True,
+    dag=dag,
+)
+
 # Define task dependencies
 # GitHub Actions will handle dbt transformation AND MotherDuck MART refresh
 install_deps >> ingestion_tasks >> upload_to_s3 >> refresh_motherduck_raw >> trigger_dbt_transform >> log_completion
+[log_completion, install_deps, upload_to_s3, refresh_motherduck_raw, trigger_dbt_transform] >> notify_failure

@@ -26,6 +26,10 @@ x-airflow-common:
     GITHUB_TOKEN: ${GITHUB_TOKEN}
     GITHUB_REPO_OWNER: ${GITHUB_REPO_OWNER:-kooroshkz}
     GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:-adaptive-data-profiling-etl}
+    BREVO_API_KEY: ${BREVO_API_KEY}
+    BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL}
+    BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Airflow Weather Pipeline}
+    BREVO_ALERT_EMAIL: ${BREVO_ALERT_EMAIL}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
