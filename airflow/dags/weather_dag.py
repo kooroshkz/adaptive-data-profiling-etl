@@ -87,9 +87,9 @@ if data_dir.exists():
                 print(f'Uploading {city_partition.name}/{parquet_file.name} to s3://{s3_bucket}/{s3_key}')
                 s3_client.upload_file(str(parquet_file), s3_bucket, s3_key)
                 uploaded += 1
-    print(f'✅ Uploaded {uploaded} partitioned files to S3')
+    print(f'Uploaded {uploaded} partitioned files to S3')
 else:
-    print(f'⚠️  Data directory {data_dir} does not exist')
+    print(f'Data directory {data_dir} does not exist')
 EOF
     ''',
     dag=dag,
@@ -109,7 +109,7 @@ repo_owner = os.getenv('GITHUB_REPO_OWNER', 'kooroshkz')
 repo_name = os.getenv('GITHUB_REPO_NAME', 'adaptive-data-profiling-etl')
 
 if not github_token:
-    print('⚠️  GITHUB_TOKEN not set, skipping transformation trigger')
+    print('GITHUB_TOKEN not set, skipping transformation trigger')
     exit(0)
 
 # Trigger via repository_dispatch
@@ -129,73 +129,11 @@ payload = {
 response = requests.post(url, headers=headers, json=payload)
 
 if response.status_code == 204:
-    print('✅ Successfully triggered dbt transformation workflow')
+    print('Successfully triggered dbt transformation workflow')
 else:
-    print(f'❌ Failed to trigger workflow: {response.status_code}')
+    print(f'Failed to trigger workflow: {response.status_code}')
     print(response.text)
     exit(1)
-EOF
-    ''',
-    dag=dag,
-)
-
-# Wait for GitHub Actions to complete
-wait_for_github_actions = BashOperator(
-    task_id='wait_for_github_actions',
-    bash_command='''
-    python3 << 'EOF'
-import requests
-import os
-import time
-
-github_token = os.getenv('GITHUB_TOKEN')
-repo_owner = os.getenv('GITHUB_REPO_OWNER', 'kooroshkz')
-repo_name = os.getenv('GITHUB_REPO_NAME', 'adaptive-data-profiling-etl')
-
-if not github_token:
-    print('⚠️  GITHUB_TOKEN not set, skipping GitHub Actions wait')
-    exit(0)
-
-print('⏳ Waiting for GitHub Actions dbt workflow to complete...')
-
-# Poll GitHub Actions API
-url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/actions/runs'
-headers = {
-    'Authorization': f'token {github_token}',
-    'Accept': 'application/vnd.github.v3+json'
-}
-
-max_wait_time = 600  # 10 minutes max
-poll_interval = 15   # Check every 15 seconds
-elapsed = 0
-
-while elapsed < max_wait_time:
-    response = requests.get(url, headers=headers, params={'per_page': 5})
-    if response.status_code == 200:
-        runs = response.json().get('workflow_runs', [])
-        # Find the most recent dbt workflow
-        dbt_runs = [r for r in runs if 'dbt' in r.get('name', '').lower()]
-        if dbt_runs:
-            latest_run = dbt_runs[0]
-            status = latest_run.get('status')
-            conclusion = latest_run.get('conclusion')
-            
-            print(f'📊 Status: {status}, Conclusion: {conclusion}')
-            
-            if status == 'completed':
-                if conclusion == 'success':
-                    print('✅ GitHub Actions dbt workflow completed successfully!')
-                    exit(0)
-                else:
-                    print(f'❌ GitHub Actions workflow completed with status: {conclusion}')
-                    exit(1)
-    
-    time.sleep(poll_interval)
-    elapsed += poll_interval
-    print(f'⏳ Still waiting... ({elapsed}s/{max_wait_time}s)')
-
-print('⚠️  Timeout waiting for GitHub Actions (10 minutes)')
-exit(0)  # Don't fail the DAG, just skip MotherDuck refresh
 EOF
     ''',
     dag=dag,
@@ -216,11 +154,11 @@ aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY')
 aws_region = os.getenv('AWS_REGION', 'us-east-1')
 
 if not motherduck_token:
-    print('⚠️  MOTHERDUCK_TOKEN not set, skipping MotherDuck raw refresh')
-    print('💡 Set MOTHERDUCK_TOKEN in .env to enable auto-refresh')
+    print('MOTHERDUCK_TOKEN not set, skipping MotherDuck raw refresh')
+    print('Set MOTHERDUCK_TOKEN in .env to enable auto-refresh')
     exit(0)
 
-print('🦆 Connecting to MotherDuck...')
+print('Connecting to MotherDuck...')
 
 # Connect to MotherDuck
 con = duckdb.connect(f'md:?motherduck_token={motherduck_token}')
@@ -230,7 +168,7 @@ con.execute(f"SET s3_access_key_id='{aws_key}';")
 con.execute(f"SET s3_secret_access_key='{aws_secret}';")
 con.execute(f"SET s3_region='{aws_region}';")
 
-print('🔄 Refreshing RAW weather data tables...')
+print('Refreshing RAW weather data tables...')
 
 cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
 
@@ -251,80 +189,8 @@ for city in cities:
     print(f'   ✓ raw_weather_data.{city}: {count} rows')
 
 con.close()
-print('✅ MotherDuck RAW tables refreshed successfully!')
-print('📊 Next: Triggering dbt transformations...')
-EOF
-    ''',
-    dag=dag,
-)
-
-# Refresh MotherDuck MART tables (after GitHub Actions dbt completes)
-refresh_motherduck_mart = BashOperator(
-    task_id='refresh_motherduck_mart',
-    bash_command='''
-    python3 << 'EOF'
-import duckdb
-import os
-
-motherduck_token = os.getenv('MOTHERDUCK_TOKEN')
-s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
-aws_key = os.getenv('AWS_ACCESS_KEY_ID')
-aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY')
-aws_region = os.getenv('AWS_REGION', 'us-east-1')
-
-if not motherduck_token:
-    print('⚠️  MOTHERDUCK_TOKEN not set, skipping MotherDuck mart refresh')
-    print('💡 Set MOTHERDUCK_TOKEN in .env to enable auto-refresh')
-    exit(0)
-
-print('🦆 Connecting to MotherDuck...')
-
-# Connect to MotherDuck
-con = duckdb.connect(f'md:?motherduck_token={motherduck_token}')
-
-# Set AWS credentials
-con.execute(f"SET s3_access_key_id='{aws_key}';")
-con.execute(f"SET s3_secret_access_key='{aws_secret}';")
-con.execute(f"SET s3_region='{aws_region}';")
-
-print('🔄 Refreshing MART (transformed) tables...')
-
-cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
-
-# Refresh weather_data tables (daily aggregations)
-con.execute('CREATE DATABASE IF NOT EXISTS weather_data;')
-con.execute('USE weather_data;')
-
-for city in cities:
-    sql = f"""
-    CREATE OR REPLACE TABLE {city} AS 
-    SELECT * FROM read_parquet(
-        's3://{s3_bucket}/mart/daily/city={city}/weather_daily.parquet', 
-        hive_partitioning=true
-    );
-    """
-    con.execute(sql)
-    count = con.execute(f'SELECT COUNT(*) FROM {city};').fetchone()[0]
-    print(f'   ✓ weather_data.{city}: {count} rows')
-
-# Refresh weather_anomalies tables
-con.execute('CREATE DATABASE IF NOT EXISTS weather_anomalies;')
-con.execute('USE weather_anomalies;')
-
-for city in cities:
-    sql = f"""
-    CREATE OR REPLACE TABLE {city} AS 
-    SELECT * FROM read_parquet(
-        's3://{s3_bucket}/mart/anomalies/city={city}/weather_anomalies.parquet', 
-        hive_partitioning=true
-    );
-    """
-    con.execute(sql)
-    count = con.execute(f'SELECT COUNT(*) FROM {city};').fetchone()[0]
-    print(f'   ✓ weather_anomalies.{city}: {count} rows')
-
-con.close()
-print('✅ MotherDuck MART tables refreshed successfully!')
+print('MotherDuck RAW tables refreshed successfully!')
+print('Next: Triggering dbt transformations...')
 EOF
     ''',
     dag=dag,
@@ -335,11 +201,14 @@ log_completion = BashOperator(
     task_id='log_completion',
     bash_command='''
     echo "Weather ingestion completed at $(date)"
-    echo "Files uploaded to S3, dbt transformation triggered"
+    echo "Files uploaded to S3, raw data refreshed in MotherDuck"
+    echo "dbt transformation triggered in GitHub Actions"
+    echo "(MotherDuck MART tables will be refreshed automatically by GitHub Actions)"
     ls -lh /opt/airflow/data/raw/*.parquet | tail -10
     ''',
     dag=dag,
 )
 
 # Define task dependencies
-install_deps >> ingestion_tasks >> upload_to_s3 >> refresh_motherduck_raw >> trigger_dbt_transform >> wait_for_github_actions >> refresh_motherduck_mart >> log_completion
+# GitHub Actions will handle dbt transformation AND MotherDuck MART refresh
+install_deps >> ingestion_tasks >> upload_to_s3 >> refresh_motherduck_raw >> trigger_dbt_transform >> log_completion
