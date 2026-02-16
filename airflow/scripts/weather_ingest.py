@@ -5,6 +5,7 @@ import os
 import argparse
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Dict, List, Optional
 import pandas as pd
 import pyarrow as pa
@@ -83,7 +84,7 @@ class WeatherIngestion:
         df_hourly["latitude"] = raw_data.get("latitude")
         df_hourly["longitude"] = raw_data.get("longitude")
         df_hourly["timezone"] = raw_data.get("timezone")
-        df_hourly["ingestion_timestamp"] = datetime.now()
+        df_hourly["ingestion_timestamp"] = datetime.now(ZoneInfo("Europe/Amsterdam"))
         df_hourly["batch_id"] = self.batch_id
         df_hourly["time"] = pd.to_datetime(df_hourly["time"])
         
@@ -93,7 +94,7 @@ class WeatherIngestion:
         df_daily["latitude"] = raw_data.get("latitude")
         df_daily["longitude"] = raw_data.get("longitude")
         df_daily["timezone"] = raw_data.get("timezone")
-        df_daily["ingestion_timestamp"] = datetime.now()
+        df_daily["ingestion_timestamp"] = datetime.now(ZoneInfo("Europe/Amsterdam"))
         df_daily["batch_id"] = self.batch_id
         df_daily["time"] = pd.to_datetime(df_daily["time"])
         
