@@ -124,6 +124,89 @@ def trigger_github_workflow(event_type, client_payload=None):
         return False
 
 
+def wait_for_github_workflow(workflow_name='dbt-transform.yml', timeout_minutes=15, poll_interval=15):
+    """
+    Wait for GitHub Actions workflow to complete and check result
+    """
+    import time
+    from datetime import datetime, timedelta
+    
+    github_token = os.getenv('GITHUB_TOKEN')
+    repo_owner = os.getenv('GITHUB_REPO_OWNER', 'kooroshkz')
+    repo_name = os.getenv('GITHUB_REPO_NAME', 'adaptive-data-profiling-etl')
+    
+    if not github_token:
+        raise Exception('GITHUB_TOKEN not set')
+    
+    headers = {
+        'Authorization': f'token {github_token}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+    
+    # Get recent workflow runs
+    url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/actions/workflows/{workflow_name}/runs'
+    
+    print(f'Waiting for GitHub Actions workflow: {workflow_name}')
+    print(f'Timeout: {timeout_minutes} minutes, Poll interval: {poll_interval} seconds')
+    
+    start_time = datetime.now()
+    timeout = timedelta(minutes=timeout_minutes)
+    
+    # Wait a few seconds for workflow to start
+    print('Waiting 10 seconds for workflow to start...')
+    time.sleep(10)
+    
+    run_id = None
+    status = None
+    conclusion = None
+    
+    while datetime.now() - start_time < timeout:
+        response = requests.get(url, headers=headers, params={'per_page': 5})
+        
+        if response.status_code != 200:
+            print(f'Failed to fetch workflow runs: {response.status_code}')
+            time.sleep(poll_interval)
+            continue
+        
+        runs = response.json().get('workflow_runs', [])
+        
+        if not runs:
+            print('No workflow runs found yet, waiting...')
+            time.sleep(poll_interval)
+            continue
+        
+        # Get the most recent run
+        latest_run = runs[0]
+        run_id = latest_run['id']
+        status = latest_run['status']
+        conclusion = latest_run['conclusion']
+        created_at = latest_run['created_at']
+        
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print(f'[{int(elapsed)}s] Run #{run_id}: status={status}, conclusion={conclusion}')
+        
+        if status == 'completed':
+            if conclusion == 'success':
+                print(f'Workflow completed successfully!')
+                print(f'Run URL: {latest_run["html_url"]}')
+                return True
+            else:
+                error_msg = f'Workflow failed with conclusion: {conclusion}'
+                print(error_msg)
+                print(f'Run URL: {latest_run["html_url"]}')
+                raise Exception(error_msg)
+        
+        # Still running
+        time.sleep(poll_interval)
+    
+    # Timeout reached
+    timeout_msg = f'Timeout: Workflow did not complete within {timeout_minutes} minutes'
+    if run_id:
+        timeout_msg += f' (Run #{run_id} status: {status})'
+    print(f'{timeout_msg}')
+    raise Exception(timeout_msg)
+
+
 def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     """
     Refresh MotherDuck tables from S3 parquet files

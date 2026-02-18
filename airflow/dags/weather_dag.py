@@ -12,6 +12,7 @@ from dag_utils import (
     send_email_notification,
     build_failure_email,
     trigger_github_workflow,
+    wait_for_github_workflow,
     refresh_motherduck_tables,
     upload_parquet_to_s3
 )
@@ -76,9 +77,9 @@ upload_to_s3 = PythonOperator(
     dag=dag,
 )
 
-# Trigger GitHub Actions for dbt transformations
+# Trigger GitHub Actions for dbt transformations and wait for completion
 def trigger_dbt():
-    """Trigger dbt transformation workflow in GitHub Actions"""
+    """Trigger dbt transformation workflow in GitHub Actions and wait for completion"""
     payload = {
         'triggered_by': 'airflow',
         'workflow': 'weather_ingestion'
@@ -86,6 +87,13 @@ def trigger_dbt():
     success = trigger_github_workflow('trigger-dbt-transform', payload)
     if not success:
         raise Exception('Failed to trigger GitHub Actions workflow')
+    
+    # Wait for workflow to complete
+    wait_for_github_workflow(
+        workflow_name='dbt-transform.yml',
+        timeout_minutes=15,
+        poll_interval=15
+    )
 
 trigger_dbt_transform = PythonOperator(
     task_id='trigger_dbt_transform',
@@ -115,10 +123,11 @@ refresh_motherduck_raw = PythonOperator(
 log_completion = BashOperator(
     task_id='log_completion',
     bash_command='''
-    echo "Weather ingestion completed at $(date)"
-    echo "Files uploaded to S3, raw data refreshed in MotherDuck"
-    echo "dbt transformation triggered in GitHub Actions"
-    echo "(MotherDuck MART tables will be refreshed automatically by GitHub Actions)"
+    echo "Weather ingestion pipeline completed successfully at $(date)"
+    echo "✓ Raw data uploaded to S3"
+    echo "✓ MotherDuck raw tables refreshed"
+    echo "✓ dbt transformations completed in GitHub Actions"
+    echo "✓ MotherDuck MART tables refreshed"
     ls -lh /opt/airflow/data/raw/*.parquet | tail -10
     ''',
     dag=dag,
@@ -143,6 +152,5 @@ notify_failure = PythonOperator(
 )
 
 # Define task dependencies
-# GitHub Actions will handle dbt transformation AND MotherDuck MART refresh
 install_deps >> ingestion_tasks >> upload_to_s3 >> refresh_motherduck_raw >> trigger_dbt_transform >> log_completion
 [log_completion, install_deps, upload_to_s3, refresh_motherduck_raw, trigger_dbt_transform] >> notify_failure
