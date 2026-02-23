@@ -1,0 +1,65 @@
+graph TB
+    API[Open-Meteo API<br/>Weather Data Source] --> Airflow
+    
+    subgraph EC2 [AWS EC2 Instance - t3.small]
+        subgraph Airflow [Apache Airflow - Docker Compose]
+            Scheduler[Scheduler<br/>512M RAM]
+            Webserver[Webserver<br/>640M RAM]
+            Postgres[PostgreSQL<br/>256M RAM]
+            Worker[Worker Tasks<br/>Python Scripts]
+        end
+        
+        DuckDB[DuckDB Engine<br/>Local Library]
+    end
+    
+    Worker -->|1. Ingest Weather Data| LocalData[Local Parquet Files<br/>Hive Partitioned]
+    LocalData -->|2. Upload| S3
+    
+    subgraph AWS [AWS Cloud]
+        S3[S3 Bucket<br/>weather-data-koorosh-thesis<br/>Hive: city=amsterdam/]
+    end
+    
+    DuckDB -->|3. CREATE OR REPLACE TABLE| MotherDuck
+    S3 -->|Read Parquet| MotherDuck
+    
+    subgraph Cloud [MotherDuck Cloud]
+        MotherDuck[MotherDuck Database<br/>raw_weather_data]
+        RawTables[(Raw Tables<br/>amsterdam, new_york<br/>london, paris, tokyo)]
+        MartTables[(Mart Tables<br/>Aggregated Data)]
+    end
+    
+    MotherDuck --> RawTables
+    
+    Worker -->|4. Trigger Webhook| GitHub
+    Worker -->|5. Poll Status API| GitHub
+    
+    subgraph GitHub [GitHub Actions]
+        Webhook[Repository Dispatch<br/>Event Trigger]
+        Runner[GitHub Runner<br/>Ubuntu Latest]
+        dbt[dbt Core<br/>Transform & Test]
+    end
+    
+    Webhook --> Runner
+    Runner --> dbt
+    dbt -->|Read from| RawTables
+    dbt -->|Write to| MartTables
+    dbt -->|Upload Results| S3Mart[S3: mart/]
+    
+    S3Mart -->|Refresh| MartTables
+    
+    GitHub -->|6. Status: Success/Failure| Worker
+    
+    Worker -->|On Failure| Brevo[Brevo API<br/>Email Notifications]
+    Brevo -->|Alert Email| Admin[kkomeilizadeh@gmail.com]
+    
+    Scheduler -.->|Schedule: 2 AM UTC| Worker
+    Webserver -.->|UI: 52.54.106.82:8080| User[User Browser]
+    
+    style API fill:#e3f2fd
+    style S3 fill:#fff4e6
+    style MotherDuck fill:#e1f5e1
+    style GitHub fill:#f3e5f5
+    style Brevo fill:#fce4ec
+    style EC2 fill:#f5f5f5
+    style AWS fill:#fff8e1
+    style Cloud fill:#e8f5e9

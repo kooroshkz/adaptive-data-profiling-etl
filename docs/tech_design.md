@@ -3,12 +3,14 @@
 ## Overview
 
 This document describes the technical design of the ETL pipeline used in this project.
-The pipeline is designed to run locally and process weather data in batch mode.
+The pipeline runs on AWS EC2 and processes weather data in batch mode.
 Its main goal is to ingest data reliably, apply structured transformations, and perform data quality checks.
 The design also allows ML-based anomaly detection to be added later without changing the core pipeline.
 
 
 <img src="files/tech_design_workflow_diagram.png" alt="ETL Pipeline Diagram" style="width:70%; max-width:800px;">
+
+**System Components**: See [system_design_diagram.mermaid](files/system_design_diagram.mermaid) for infrastructure and technology stack.
 
 ---
 
@@ -20,8 +22,8 @@ After ingestion, transformations and validations are applied before the data is 
 Each part of the system has a single responsibility to keep the pipeline easy to understand and extend.
 
 Apache Airflow is used to control execution order and scheduling.
-DuckDB is used for storage and querying with Parquet files.
-dbt is used to manage transformations and data quality checks.
+Parquet files are stored in S3 with Hive partitioning, and MotherDuck is used for querying.
+dbt runs in GitHub Actions and manages transformations and data quality checks.
 
 ---
 
@@ -44,37 +46,40 @@ No validation or cleaning is done at this stage.
 
 Apache Airflow is used to orchestrate the pipeline.
 Airflow manages task execution order, scheduling, and retries.
-Each pipeline run consists of ingestion, loading, transformation, and validation steps.
+Each pipeline run consists of ingestion, S3 upload, raw table refresh, and triggering transformations.
 
 Historical ingestion is triggered manually, while daily ingestion is scheduled.
-If a task fails, Airflow retries execution without affecting previously ingested data.
+Airflow waits for GitHub Actions to complete dbt transformations before marking the pipeline successful.
+If a task fails, Airflow retries execution and sends email notifications without affecting previously ingested data.
 
 ---
 
 ## Storage Design
 
-DuckDB is used as the analytical database.
-It allows SQL queries to be executed directly on local data without running a separate server.
-This makes the system easy to set up and maintain.
+MotherDuck is used as the analytical database.
+It allows SQL queries to be executed on cloud-hosted DuckDB with S3 integration.
+This makes the system scalable while maintaining DuckDB's performance.
+Airflow uses the local DuckDB engine to connect to MotherDuck and refresh tables from S3.
 
-Data is stored in Parquet format, which DuckDB can query efficiently.
+Data is stored in Parquet format in S3 using Hive partitioning by city.
 Versioning is handled through timestamped snapshots and DuckDB's native capabilities.
 This makes it possible to reproduce experiments and compare different versions of the data.
 
 Data is stored in three logical layers.
-Raw tables store ingested data without modification.
+Raw tables store ingested data without modification and are refreshed by Airflow.
 Staging tables apply basic cleaning and type conversion.
-Mart tables contain aggregated and analysis-ready data.
+Mart tables contain aggregated and analysis-ready data and are refreshed by dbt in GitHub Actions.
 
 ---
 
 ## Data Transformation
 
-Data transformations are handled using dbt.
+Data transformations are handled using dbt running in GitHub Actions.
 dbt models are written in SQL and define how data moves from raw to staging and mart layers.
 
 Transformations include renaming columns, casting data types, and computing simple derived values.
 All transformation logic is version controlled and easy to review.
+Airflow triggers the dbt workflow and waits for completion to ensure pipeline integrity.
 
 Schema information and metadata are stored in dbt configuration files.
 These files also contain basic validation rules and optional metadata that can be used later for ML-based profiling.
@@ -96,9 +101,9 @@ The rule-based checks serve as a baseline for later comparison with ML-based ano
 
 The pipeline is designed to support incremental processing.
 Each ingestion run tracks the most recent timestamp that was successfully processed.
-Only new data is fetched during daily runs.
+Only new data is fetched during daily runs and stored with ingestion timestamps in Amsterdam timezone.
 
-DuckDB table snapshots and timestamped data make it possible to compare data across different pipeline executions.
+MotherDuck table snapshots and timestamped data in S3 make it possible to compare data across different pipeline executions.
 This is useful for studying how data quality changes over time.
 
 ---
