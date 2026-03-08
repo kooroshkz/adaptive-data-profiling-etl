@@ -124,17 +124,38 @@ class WeatherIngestion:
         
         return hourly_filepath, daily_filepath
         
+    def check_data_exists(self, start_date: str, end_date: str) -> bool:
+        """Check if data already exists in local parquet files."""
+        # For incremental runs (single day), check if file exists
+        if start_date == end_date:
+            city_partition_path = os.path.join(RAW_DATA_PATH, f"city={self.city_id}")
+            if os.path.exists(city_partition_path):
+                # Check for any file matching the date pattern
+                pattern = f"hourly_{start_date}_{end_date}_"
+                files = [f for f in os.listdir(city_partition_path) if f.startswith(pattern)]
+                if files:
+                    logger.info(f"   ✓ Data already exists for {self.city_name} on {start_date} ({len(files)} files)")
+                    return True
+        return False
+    
     def run(
         self,
         start_date: str,
         end_date: str,
-        use_historical_api: bool = True
+        use_historical_api: bool = True,
+        skip_if_exists: bool = True
     ) -> Optional[str]:
         """Execute full ingestion pipeline."""
         try:
             logger.info("=" * 70)
             logger.info("STARTING WEATHER INGESTION")
             logger.info("=" * 70)
+            
+            # Check if data already exists and skip if requested
+            if skip_if_exists and self.check_data_exists(start_date, end_date):
+                logger.info(f"SKIPPING: Data already exists for {self.city_name} ({start_date} to {end_date})")
+                logger.info("=" * 70)
+                return "SKIPPED"
             
             raw_data = self.fetch_weather_data(start_date, end_date, use_historical_api)
             if not raw_data:
@@ -203,10 +224,14 @@ Examples:
         use_historical = True
         
     ingestion = WeatherIngestion(args.city)
-    result = ingestion.run(start_date, end_date, use_historical)
+    result = ingestion.run(start_date, end_date, use_historical, skip_if_exists=True)
     
-    if result:
+    if result == "SKIPPED":
+        print(f"\nData already exists for {args.city} on {start_date} to {end_date}. Skipped.")
+        exit(0)  # Exit successfully
+    elif result:
         print(f"\nSuccess! Data saved to: {result}")
+        exit(0)
     else:
         print("\nIngestion failed. Check logs above.")
         exit(1)

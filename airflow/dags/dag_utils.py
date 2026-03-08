@@ -237,22 +237,60 @@ def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     con.execute(f'CREATE DATABASE IF NOT EXISTS {database};')
     con.execute(f'USE {database};')
     
+    success_count = 0
+    failed_tables = []
+    
     for table in tables:
         s3_pattern = s3_pattern_fn(table)
-        sql = f"""
-        CREATE OR REPLACE TABLE {table} AS 
-        SELECT * FROM read_parquet(
-            '{s3_pattern}', 
-            hive_partitioning=true
-        );
-        """
-        con.execute(sql)
-        count = con.execute(f'SELECT COUNT(*) FROM {table};').fetchone()[0]
-        print(f'   ✓ {database}.{table}: {count} rows')
+        try:
+            sql = f"""
+            CREATE OR REPLACE TABLE {table} AS 
+            SELECT DISTINCT * FROM read_parquet(
+                '{s3_pattern}', 
+                hive_partitioning=true
+            );
+            """
+            con.execute(sql)
+            count = con.execute(f'SELECT COUNT(*) FROM {table};').fetchone()[0]
+            print(f'   ✓ {database}.{table}: {count} rows (deduplicated)')
+            success_count += 1
+        except Exception as e:
+            print(f'   ⚠️  {database}.{table}: SKIPPED - {str(e)[:100]}')
+            failed_tables.append(table)
     
     con.close()
-    print(f'{database} tables refreshed successfully!')
-    return True
+    
+    if failed_tables:
+        print(f'\n⚠️  Warning: {len(failed_tables)} tables skipped: {", ".join(failed_tables)}')
+        print(f'✓ Successfully refreshed {success_count}/{len(tables)} tables')
+        return False  # Indicate partial failure
+    else:
+        print(f'✓ All {database} tables refreshed successfully!')
+        return True
+
+
+def check_data_exists_in_s3(city, date, s3_prefix='raw'):
+    """Check if data for a given city and date already exists in S3"""
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
+    prefix = f'{s3_prefix}/city={city}/hourly_{date}_{date}_'
+    
+    try:
+        s3 = boto3.client('s3')
+        response = s3.list_objects_v2(Bucket=s3_bucket, Prefix=prefix)
+        
+        if 'Contents' in response and len(response['Contents']) > 0:
+            files = [obj['Key'] for obj in response['Contents']]
+            print(f"   ✓ Data already exists for {city} on {date}: {len(files)} files found")
+            return True
+        else:
+            print(f"   → No existing data found for {city} on {date}")
+            return False
+    except ClientError as e:
+        print(f"   ⚠️  Error checking S3 for {city} on {date}: {e}")
+        return False
 
 
 def upload_parquet_to_s3(local_dir, s3_prefix):
