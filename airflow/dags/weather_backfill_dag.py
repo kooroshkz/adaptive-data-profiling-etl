@@ -12,8 +12,7 @@ from dag_utils import (
     send_email_notification,
     build_failure_email,
     trigger_github_workflow,
-    wait_for_github_workflow,
-    upload_parquet_to_s3
+    wait_for_github_workflow
 )
 
 default_args = {
@@ -160,16 +159,6 @@ for idx, city in enumerate(CITIES):
     )
     backfill_tasks.append(task)
 
-# Upload to S3 (reuses same function as daily job)
-def upload_task():
-    """Upload parquet files to S3"""
-    upload_parquet_to_s3('/opt/airflow/data/raw', 'raw')
-
-upload_to_s3 = PythonOperator(
-    task_id='upload_to_s3',
-    python_callable=upload_task,
-    dag=dag,
-)
 
 # Trigger dbt transformations (reuses same function as daily job)
 def trigger_dbt():
@@ -203,7 +192,7 @@ log_completion = BashOperator(
     echo "BACKFILL COMPLETED SUCCESSFULLY"
     echo "========================================"
     echo "Date Range: {BACKFILL_START} to {yesterday}"
-    echo "✓ Raw data uploaded to S3"
+    echo "✓ Raw data uploaded to S3 per-city (real-time)"
     echo "✓ dbt transformations completed"
     echo "✓ MotherDuck VIEWs query S3 directly (always fresh)"
     echo "========================================"
@@ -238,8 +227,8 @@ clean_old_data >> install_deps >> log_backfill_info >> backfill_tasks[0]
 for i in range(len(backfill_tasks) - 1):
     backfill_tasks[i] >> backfill_tasks[i + 1]
 
-# After all cities complete, run the rest of the pipeline
-backfill_tasks[-1] >> upload_to_s3 >> trigger_dbt_transform >> log_completion
+# After all cities complete, trigger dbt transformations
+backfill_tasks[-1] >> trigger_dbt_transform >> log_completion
 
 # Failure notifications
-[log_completion, clean_old_data, install_deps, upload_to_s3, trigger_dbt_transform] >> notify_failure
+[log_completion, clean_old_data, install_deps, trigger_dbt_transform] >> notify_failure

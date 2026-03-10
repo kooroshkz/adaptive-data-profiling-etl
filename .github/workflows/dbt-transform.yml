@@ -264,14 +264,10 @@ jobs:
         AWS_REGION: ${{ secrets.AWS_REGION }}
         S3_BUCKET: ${{ secrets.S3_BUCKET }}
         
-    - name: Skip MotherDuck refresh (VIEWs query S3 directly)
-      run: |
-        echo "Skipping MotherDuck refresh - all tables are VIEWs that query S3 directly"
-        echo "MotherDuck data is always fresh without manual refresh"
-        
     - name: Summary
       run: |
         echo "dbt transformation pipeline completed!"
+        echo ""
         echo "Transformed data available with Hive partitioning:"
         echo "  - s3://${{ secrets.S3_BUCKET }}/staging/city=<city>/weather_hourly.parquet"
         echo "  - s3://${{ secrets.S3_BUCKET }}/mart/daily/city=<city>/weather_daily.parquet"
@@ -279,4 +275,3 @@ jobs:
         echo ""
         echo "Cities: amsterdam, new_york, london, paris, tokyo"
         echo ""
-        echo "MotherDuck MART tables refreshed"

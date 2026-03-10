@@ -5,6 +5,7 @@ import logging
 from typing import Dict, Optional, Any
 import requests
 from datetime import datetime
+import pandas as pd
 
 logging.basicConfig(
     level=logging.INFO,
@@ -97,3 +98,56 @@ def log_ingestion_stats(city: str, start_date: str, end_date: str, record_count:
     logger.info(f"Date Range: {start_date} to {end_date}")
     logger.info(f"Records Ingested: {record_count:,}")
     logger.info("=" * 60)
+
+
+def get_latest_s3_timestamp(city_id: str, s3_bucket: str = None) -> Optional[str]:
+    """Query S3 for the latest ingestion timestamp for a city.
+    
+    Returns:
+        Latest date as string (YYYY-MM-DD), or None if no data exists.
+    """
+    import boto3
+    import os
+    import pyarrow.parquet as pq
+    from datetime import datetime
+    
+    if not s3_bucket:
+        s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
+    
+    try:
+        s3 = boto3.client('s3')
+        prefix = f'raw/city={city_id}/'
+        
+        logger.info(f"Querying S3 for latest timestamp: s3://{s3_bucket}/{prefix}")
+        
+        # List all parquet files for this city
+        response = s3.list_objects_v2(Bucket=s3_bucket, Prefix=prefix)
+        
+        if 'Contents' not in response or not response['Contents']:
+            logger.info(f"   No existing data in S3 for city={city_id}")
+            return None
+        
+        # Get the most recently modified file
+        files = sorted(response['Contents'], key=lambda x: x['LastModified'], reverse=True)
+        latest_file = files[0]['Key']
+        
+        logger.info(f"   Latest S3 file: {latest_file}")
+        
+        # Read the parquet file from S3 to get max timestamp
+        s3_path = f's3://{s3_bucket}/{latest_file}'
+        table = pq.read_table(s3_path)
+        df = table.to_pandas()
+        
+        if 'time' in df.columns and len(df) > 0:
+            # Get the maximum timestamp from the 'time' column
+            max_timestamp = pd.to_datetime(df['time']).max()
+            latest_date = max_timestamp.strftime('%Y-%m-%d')
+            logger.info(f"   ✓ Latest data timestamp in S3: {latest_date}")
+            return latest_date
+        else:
+            logger.warning(f"      Parquet file has no 'time' column or is empty")
+            return None
+            
+    except Exception as e:
+        logger.error(f"      Failed to query S3: {e}")
+        return None

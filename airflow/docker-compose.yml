@@ -14,8 +14,8 @@ x-airflow-common:
     # Memory optimizations for t3.small (2GB RAM, 2 vCPUs)
     AIRFLOW__WEBSERVER__WORKERS: 2  # Use both vCPUs
     AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: 300  # 5 min timeout
-    AIRFLOW__CORE__PARALLELISM: 16    # 2x the t3micro (we have 2x CPU)
-    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: 2  # Run 2 tasks simultaneously
+    AIRFLOW__CORE__PARALLELISM: 16
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: 1  # Run 1 task simultaneously
     AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: 1
     AIRFLOW__SCHEDULER__PARSING_PROCESSES: 2  # Use both cores
     # Install additional Python packages

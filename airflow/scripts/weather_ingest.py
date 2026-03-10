@@ -20,7 +20,8 @@ from config import (
 )
 from utils import (
     make_api_request, validate_weather_data,
-    generate_batch_id, log_ingestion_stats, logger
+    generate_batch_id, log_ingestion_stats, logger,
+    get_latest_s3_timestamp
 )
 
 
@@ -122,7 +123,41 @@ class WeatherIngestion:
         logger.info(f"Saved hourly data: {hourly_filepath} ({hourly_size_mb:.2f} MB)")
         logger.info(f"Saved daily data: {daily_filepath} ({daily_size_mb:.2f} MB)")
         
+        # Upload to S3 immediately after saving
+        self.upload_to_s3(hourly_filepath, daily_filepath)
+        
         return hourly_filepath, daily_filepath
+    
+    def upload_to_s3(self, hourly_filepath: str, daily_filepath: str):
+        """Upload parquet files to S3 with Hive partitioning."""
+        import boto3
+        from pathlib import Path
+        
+        s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
+        s3_client = boto3.client('s3',
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_REGION', 'eu-west-1')
+        )
+        
+        logger.info(f"Uploading to S3 bucket: {s3_bucket}")
+        
+        for filepath in [hourly_filepath, daily_filepath]:
+            # Extract city partition and filename from path
+            # e.g., /opt/airflow/data/raw/city=amsterdam/hourly_2024-01-01_2024-01-01_20260310.parquet
+            path_obj = Path(filepath)
+            city_partition = path_obj.parent.name  # city=amsterdam
+            filename = path_obj.name  # hourly_2024-01-01_2024-01-01_20260310.parquet
+            
+            s3_key = f'raw/{city_partition}/{filename}'
+            
+            try:
+                logger.info(f"  → Uploading {city_partition}/{filename} to s3://{s3_bucket}/{s3_key}")
+                s3_client.upload_file(filepath, s3_bucket, s3_key)
+                logger.info(f"  ✓ Uploaded successfully")
+            except Exception as e:
+                logger.error(f"  ✗ Failed to upload {filename}: {e}")
+                raise
         
     def check_data_exists(self, start_date: str, end_date: str) -> bool:
         """Check if data already exists in local parquet files."""
@@ -137,6 +172,51 @@ class WeatherIngestion:
                     logger.info(f"   ✓ Data already exists for {self.city_name} on {start_date} ({len(files)} files)")
                     return True
         return False
+    
+    def calculate_smart_date_range(self) -> Optional[tuple[str, str]]:
+        """Calculate date range based on latest S3 data.
+        
+        Returns:
+            (start_date, end_date) tuple if data needs ingestion, None if up-to-date.
+        """
+        from datetime import datetime, timedelta
+        
+        logger.info(f"Checking S3 for latest data timestamp...")
+        
+        # Query S3 for the latest timestamp
+        latest_s3_date = get_latest_s3_timestamp(self.city_id)
+        
+        # Calculate today's date (or yesterday if prefer to avoid partial data)
+        today = datetime.now().date()
+        yesterday = today - timedelta(days=1)
+        target_date = yesterday  # Use yesterday to ensure complete data
+        
+        if not latest_s3_date:
+            # No data in S3 - this is first-time ingestion
+            logger.info(f"     No existing data found in S3 for {self.city_name}")
+            logger.info(f"   → Will fetch data from yesterday: {target_date}")
+            return (str(target_date), str(target_date))
+        
+        # Parse the latest S3 date
+        latest_date = datetime.strptime(latest_s3_date, '%Y-%m-%d').date()
+        
+        # Check if we're already up-to-date
+        if latest_date >= target_date:
+            logger.info(f"     Data is up-to-date! Latest: {latest_date}, Target: {target_date}")
+            logger.info(f"   → No ingestion needed for {self.city_name}")
+            return None
+        
+        # Calculate the gap
+        gap_days = (target_date - latest_date).days
+        next_date = latest_date + timedelta(days=1)
+        
+        logger.info(f"      Data gap detected:")
+        logger.info(f"      Latest in S3: {latest_date}")
+        logger.info(f"      Target date:  {target_date}")
+        logger.info(f"      Gap: {gap_days} day(s)")
+        logger.info(f"   → Will fetch: {next_date} to {target_date}")
+        
+        return (str(next_date), str(target_date))
     
     def run(
         self,
@@ -197,9 +277,9 @@ Examples:
     
     parser.add_argument(
         "--mode",
-        choices=["backfill", "incremental", "custom"],
-        default="custom",
-        help="Ingestion mode"
+        choices=["backfill", "incremental", "smart", "custom"],
+        default="smart",
+        help="Ingestion mode: smart (S3-aware, recommended), incremental (yesterday only), backfill, custom"
     )
     
     parser.add_argument("--start-date", help="Start date (YYYY-MM-DD)")
@@ -207,24 +287,47 @@ Examples:
     
     args = parser.parse_args()
     
+    # Initialize ingestion handler
+    ingestion = WeatherIngestion(args.city)
+    
+    # Determine date range based on mode
     if args.mode == "backfill":
         start_date = BACKFILL_START_DATE
         end_date = BACKFILL_END_DATE
         use_historical = True
+        skip_check = False
+        
+    elif args.mode == "smart":
+        # Smart mode: query S3 and calculate the gap
+        date_range = ingestion.calculate_smart_date_range()
+        
+        if date_range is None:
+            # Already up-to-date, nothing to ingest
+            print(f"\nData is up-to-date for {args.city}. No ingestion needed.")
+            exit(0)
+        
+        start_date, end_date = date_range
+        use_historical = True  # Use historical API for any date range
+        skip_check = False  # Don't skip, we already calculated the gap
+        
     elif args.mode == "incremental":
+        # Traditional incremental: always fetch yesterday
         incremental_date = get_incremental_date()
         start_date = incremental_date
         end_date = incremental_date
         use_historical = False
-    else:
+        skip_check = True  # Use traditional skip check
+        
+    else:  # custom mode
         if not args.start_date or not args.end_date:
             parser.error("--start-date and --end-date required for custom mode")
         start_date = args.start_date
         end_date = args.end_date
         use_historical = True
-        
-    ingestion = WeatherIngestion(args.city)
-    result = ingestion.run(start_date, end_date, use_historical, skip_if_exists=True)
+        skip_check = True
+    
+    # Run ingestion
+    result = ingestion.run(start_date, end_date, use_historical, skip_if_exists=skip_check)
     
     if result == "SKIPPED":
         print(f"\nData already exists for {args.city} on {start_date} to {end_date}. Skipped.")
