@@ -2,14 +2,14 @@ version: 2
 
 sources:
   - name: raw
-    description: Raw weather data from Open-Meteo API stored in S3 Parquet files
+    description: Raw weather data from Open-Meteo API stored in S3 Parquet files (Hive partitioned)
     meta:
-      external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/*_hourly_*.parquet')"
+      external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/city=*/hourly_*.parquet', hive_partitioning=true)"
     tables:
       - name: weather_hourly
-        description: Hourly weather measurements ingested from API
+        description: Hourly weather measurements ingested from API (Hive partitioned by city)
         meta:
-          external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/*_hourly_*.parquet')"
+          external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/city=*/hourly_*.parquet', hive_partitioning=true)"
         columns:
           - name: time
             description: Timestamp of measurement

@@ -30,7 +30,7 @@ jobs:
         
     - name: Install dbt and dependencies
       run: |
-        pip install dbt-core dbt-duckdb boto3 pyarrow pandas duckdb
+        pip install dbt-core dbt-duckdb boto3 pyarrow pandas duckdb==1.1.3
         
     - name: Configure AWS credentials
       run: |
@@ -80,7 +80,7 @@ jobs:
         con.execute(f"SET s3_secret_access_key='{os.getenv('AWS_SECRET_ACCESS_KEY')}';")
         
         bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
-        result = con.execute(f"SELECT COUNT(*) FROM read_parquet('s3://{bucket}/raw/*.parquet')").fetchone()
+        result = con.execute(f"SELECT COUNT(*) FROM read_parquet('s3://{bucket}/raw/city=*/hourly_*.parquet', hive_partitioning=true)").fetchone()
         print(f"Successfully read {result[0]} rows from S3")
         con.close()
         PYEOF
@@ -152,7 +152,7 @@ jobs:
             timezone,
             ingestion_timestamp,
             batch_id
-        FROM read_parquet('s3://{bucket}/raw/*_hourly_*.parquet')
+        FROM read_parquet('s3://{bucket}/raw/city=*/hourly_*.parquet', hive_partitioning=true)
         """
         con.execute(staging_query)
         staging_count = con.execute("SELECT COUNT(*) FROM staging_weather").fetchone()[0]

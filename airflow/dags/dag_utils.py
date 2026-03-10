@@ -229,6 +229,11 @@ def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     print(f'Connecting to MotherDuck...')
     con = duckdb.connect(f'md:?motherduck_token={motherduck_token}')
     
+    # Memory optimization for low-RAM servers (t3.micro/t3.small)
+    con.execute("SET memory_limit='512MB';")  # Limit DuckDB memory usage
+    con.execute("SET max_memory='512MB';")
+    con.execute("SET temp_directory='/tmp/duckdb';")  # Use disk for spilling
+    
     con.execute(f"SET s3_access_key_id='{aws_key}';")
     con.execute(f"SET s3_secret_access_key='{aws_secret}';")
     con.execute(f"SET s3_region='{aws_region}';")
@@ -243,14 +248,23 @@ def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     for table in tables:
         s3_pattern = s3_pattern_fn(table)
         try:
+            # Memory-efficient approach: use GROUP BY for deduplication instead of DISTINCT
+            # This allows DuckDB to spill to disk if needed
             sql = f"""
             CREATE OR REPLACE TABLE {table} AS 
-            SELECT DISTINCT * FROM read_parquet(
-                '{s3_pattern}', 
-                hive_partitioning=true
-            );
+            SELECT * FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY date, city 
+                    ORDER BY ingestion_timestamp DESC
+                ) as rn
+                FROM read_parquet('{s3_pattern}', hive_partitioning=true)
+            ) WHERE rn = 1;
             """
             con.execute(sql)
+            
+            # Drop the row_number column
+            con.execute(f"ALTER TABLE {table} DROP COLUMN rn;")
+            
             count = con.execute(f'SELECT COUNT(*) FROM {table};').fetchone()[0]
             print(f'   ✓ {database}.{table}: {count} rows (deduplicated)')
             success_count += 1
