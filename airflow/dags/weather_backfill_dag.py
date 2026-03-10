@@ -13,7 +13,6 @@ from dag_utils import (
     build_failure_email,
     trigger_github_workflow,
     wait_for_github_workflow,
-    refresh_motherduck_tables,
     upload_parquet_to_s3
 )
 
@@ -138,13 +137,23 @@ log_backfill_info = BashOperator(
 # Backfill ingestion tasks for each city
 # Sequential processing to avoid overwhelming the API
 backfill_tasks = []
-for city in CITIES:
+for idx, city in enumerate(CITIES):
+    # Add 5-minute delay before each city (except first) to avoid rate limiting
+    delay_command = "" if idx == 0 else "echo 'Waiting 5 minutes to avoid rate limit...'; sleep 300; "
+    
     task = BashOperator(
         task_id=f'backfill_{city}',
         bash_command=f'''
+        set -e  # Exit immediately if any command fails
+        {delay_command}
         echo "Starting backfill for {city}..."
         cd /opt/airflow/scripts
         python weather_ingest.py --city {city} --mode custom --start-date {BACKFILL_START} --end-date {yesterday}
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -ne 0 ]; then
+            echo "Backfill FAILED for {city} (exit code: $EXIT_CODE)"
+            exit $EXIT_CODE
+        fi
         echo "✓ Completed backfill for {city}"
         ''',
         dag=dag,
@@ -159,24 +168,6 @@ def upload_task():
 upload_to_s3 = PythonOperator(
     task_id='upload_to_s3',
     python_callable=upload_task,
-    dag=dag,
-)
-
-# Refresh MotherDuck RAW tables (reuses same function as daily job)
-def refresh_raw_tables():
-    """Refresh MotherDuck raw weather data tables from S3"""
-    import os
-    cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
-    s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
-    
-    def s3_pattern(city):
-        return f's3://{s3_bucket}/raw/city={city}/hourly_*.parquet'
-    
-    refresh_motherduck_tables('raw_weather_data', cities, s3_pattern)
-
-refresh_motherduck_raw = PythonOperator(
-    task_id='refresh_motherduck_raw',
-    python_callable=refresh_raw_tables,
     dag=dag,
 )
 
@@ -213,9 +204,8 @@ log_completion = BashOperator(
     echo "========================================"
     echo "Date Range: {BACKFILL_START} to {yesterday}"
     echo "✓ Raw data uploaded to S3"
-    echo "✓ MotherDuck raw tables refreshed"
     echo "✓ dbt transformations completed"
-    echo "✓ MotherDuck MART tables updated"
+    echo "✓ MotherDuck VIEWs query S3 directly (always fresh)"
     echo "========================================"
     echo ""
     echo "Recent parquet files:"
@@ -249,7 +239,7 @@ for i in range(len(backfill_tasks) - 1):
     backfill_tasks[i] >> backfill_tasks[i + 1]
 
 # After all cities complete, run the rest of the pipeline
-backfill_tasks[-1] >> upload_to_s3 >> refresh_motherduck_raw >> trigger_dbt_transform >> log_completion
+backfill_tasks[-1] >> upload_to_s3 >> trigger_dbt_transform >> log_completion
 
 # Failure notifications
-[log_completion, clean_old_data, install_deps, upload_to_s3, refresh_motherduck_raw, trigger_dbt_transform] >> notify_failure
+[log_completion, clean_old_data, install_deps, upload_to_s3, trigger_dbt_transform] >> notify_failure

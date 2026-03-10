@@ -264,77 +264,10 @@ jobs:
         AWS_REGION: ${{ secrets.AWS_REGION }}
         S3_BUCKET: ${{ secrets.S3_BUCKET }}
         
-    - name: Refresh MotherDuck MART tables
+    - name: Skip MotherDuck refresh (VIEWs query S3 directly)
       run: |
-        python3 << 'PYEOF'
-        import duckdb
-        import os
-        
-        motherduck_token = os.getenv('MOTHERDUCK_TOKEN')
-        s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
-        aws_key = os.getenv('AWS_ACCESS_KEY_ID')
-        aws_secret = os.getenv('AWS_SECRET_ACCESS_KEY')
-        aws_region = os.getenv('AWS_REGION', 'us-east-1')
-        
-        if not motherduck_token:
-            print('MOTHERDUCK_TOKEN not set, skipping MotherDuck mart refresh')
-            exit(0)
-        
-        print('Connecting to MotherDuck...')
-        
-        # Connect to MotherDuck
-        con = duckdb.connect(f'md:?motherduck_token={motherduck_token}')
-        
-        # Set AWS credentials
-        con.execute(f"SET s3_access_key_id='{aws_key}';")
-        con.execute(f"SET s3_secret_access_key='{aws_secret}';")
-        con.execute(f"SET s3_region='{aws_region}';")
-        
-        print('Refreshing MART (transformed) tables...')
-        
-        cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
-        
-        # Refresh weather_data tables (daily aggregations)
-        con.execute('CREATE DATABASE IF NOT EXISTS weather_data;')
-        con.execute('USE weather_data;')
-        
-        for city in cities:
-            sql = f"""
-            CREATE OR REPLACE TABLE {city} AS 
-            SELECT * FROM read_parquet(
-                's3://{s3_bucket}/mart/daily/city={city}/weather_daily.parquet', 
-                hive_partitioning=true
-            );
-            """
-            con.execute(sql)
-            count = con.execute(f'SELECT COUNT(*) FROM {city};').fetchone()[0]
-            print(f'   ✓ weather_data.{city}: {count} rows')
-        
-        # Refresh weather_anomalies tables
-        con.execute('CREATE DATABASE IF NOT EXISTS weather_anomalies;')
-        con.execute('USE weather_anomalies;')
-        
-        for city in cities:
-            sql = f"""
-            CREATE OR REPLACE TABLE {city} AS 
-            SELECT * FROM read_parquet(
-                's3://{s3_bucket}/mart/anomalies/city={city}/weather_anomalies.parquet', 
-                hive_partitioning=true
-            );
-            """
-            con.execute(sql)
-            count = con.execute(f'SELECT COUNT(*) FROM {city};').fetchone()[0]
-            print(f'   ✓ weather_anomalies.{city}: {count} rows')
-        
-        con.close()
-        print('MotherDuck MART tables refreshed successfully!')
-        PYEOF
-      env:
-        MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
-        S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        echo "Skipping MotherDuck refresh - all tables are VIEWs that query S3 directly"
+        echo "MotherDuck data is always fresh without manual refresh"
         
     - name: Summary
       run: |

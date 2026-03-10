@@ -14,7 +14,6 @@ from dag_utils import (
     build_failure_email,
     trigger_github_workflow,
     wait_for_github_workflow,
-    refresh_motherduck_tables,
     upload_parquet_to_s3
 )
 
@@ -58,10 +57,18 @@ for idx, city in enumerate(CITIES):
     task = BashOperator(
         task_id=f'ingest_{city}',
         bash_command=f'''
+        set -e  # Exit immediately if command fails
         sleep 1  # 1-second delay to rate-limit starts
         cd /opt/airflow/scripts
         OUTPUT=$(python weather_ingest.py --city {city} --mode incremental 2>&1)
+        EXIT_CODE=$?
         echo "$OUTPUT"
+        
+        # Check for failure first (429 rate limit, API errors, etc.)
+        if [ $EXIT_CODE -ne 0 ]; then
+            echo "FAILED"
+            exit $EXIT_CODE
+        fi
         
         # Push result to XCom (check if skipped)
         if echo "$OUTPUT" | grep -q "Data already exists"; then
@@ -154,33 +161,14 @@ trigger_dbt_transform = PythonOperator(
     dag=dag,
 )
 
-# Refresh MotherDuck RAW tables
-def refresh_raw_tables():
-    """Refresh MotherDuck raw weather data tables from S3"""
-    import os
-    cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
-    s3_bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
-    
-    def s3_pattern(city):
-        return f's3://{s3_bucket}/raw/city={city}/hourly_*.parquet'
-    
-    refresh_motherduck_tables('raw_weather_data', cities, s3_pattern)
-
-refresh_motherduck_raw = PythonOperator(
-    task_id='refresh_motherduck_raw',
-    python_callable=refresh_raw_tables,
-    dag=dag,
-)
-
 # Log completion
 log_completion = BashOperator(
     task_id='log_completion',
     bash_command='''
     echo "Weather ingestion pipeline completed successfully at $(date)"
     echo "✓ Raw data uploaded to S3"
-    echo "✓ MotherDuck raw tables refreshed"
     echo "✓ dbt transformations completed in GitHub Actions"
-    echo "✓ MotherDuck MART tables refreshed"
+    echo "✓ MotherDuck VIEWs query S3 directly (always fresh)"
     ls -lh /opt/airflow/data/raw/*.parquet | tail -10
     ''',
     trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,  # Run if either path succeeds
@@ -206,8 +194,8 @@ notify_failure = PythonOperator(
 )
 
 # Define task dependencies
-# Main path: install -> ingest -> check -> [upload -> refresh -> dbt -> complete] OR [skip -> complete]
+# Main path: install -> ingest -> check -> [upload -> dbt -> complete] OR [skip -> complete]
 install_deps >> ingestion_tasks >> check_for_new_data
-check_for_new_data >> upload_to_s3 >> refresh_motherduck_raw >> trigger_dbt_transform >> log_completion
+check_for_new_data >> upload_to_s3 >> trigger_dbt_transform >> log_completion
 check_for_new_data >> skip_downstream >> log_completion
-[log_completion, install_deps, upload_to_s3, refresh_motherduck_raw, trigger_dbt_transform] >> notify_failure
+[log_completion, install_deps, upload_to_s3, trigger_dbt_transform] >> notify_failure

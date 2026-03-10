@@ -209,7 +209,8 @@ def wait_for_github_workflow(workflow_name='dbt-transform.yml', timeout_minutes=
 
 def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     """
-    Refresh MotherDuck tables from S3 parquet files
+    Create/refresh MotherDuck VIEWs that query S3 directly (no caching).
+    VIEWs always read fresh data from S3, no refresh needed.
     
     Args:
         database: MotherDuck database name
@@ -229,16 +230,11 @@ def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     print(f'Connecting to MotherDuck...')
     con = duckdb.connect(f'md:?motherduck_token={motherduck_token}')
     
-    # Memory optimization for low-RAM servers (t3.micro/t3.small)
-    con.execute("SET memory_limit='512MB';")  # Limit DuckDB memory usage
-    con.execute("SET max_memory='512MB';")
-    con.execute("SET temp_directory='/tmp/duckdb';")  # Use disk for spilling
-    
     con.execute(f"SET s3_access_key_id='{aws_key}';")
     con.execute(f"SET s3_secret_access_key='{aws_secret}';")
     con.execute(f"SET s3_region='{aws_region}';")
     
-    print(f'Refreshing {database} tables...')
+    print(f'Creating {database} VIEWs (direct S3 query, no caching)...')
     con.execute(f'CREATE DATABASE IF NOT EXISTS {database};')
     con.execute(f'USE {database};')
     
@@ -248,13 +244,13 @@ def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     for table in tables:
         s3_pattern = s3_pattern_fn(table)
         try:
-            # Memory-efficient approach: use GROUP BY for deduplication instead of DISTINCT
-            # This allows DuckDB to spill to disk if needed
+            # Create VIEW instead of TABLE - always queries S3 directly
+            # Deduplication: keep only the latest ingestion per time/city
             sql = f"""
-            CREATE OR REPLACE TABLE {table} AS 
-            SELECT * FROM (
+            CREATE OR REPLACE VIEW {table} AS 
+            SELECT * EXCLUDE (rn) FROM (
                 SELECT *, ROW_NUMBER() OVER (
-                    PARTITION BY date, city 
+                    PARTITION BY time, city 
                     ORDER BY ingestion_timestamp DESC
                 ) as rn
                 FROM read_parquet('{s3_pattern}', hive_partitioning=true)
@@ -262,11 +258,9 @@ def refresh_motherduck_tables(database, tables, s3_pattern_fn):
             """
             con.execute(sql)
             
-            # Drop the row_number column
-            con.execute(f"ALTER TABLE {table} DROP COLUMN rn;")
-            
+            # Test the view and get count
             count = con.execute(f'SELECT COUNT(*) FROM {table};').fetchone()[0]
-            print(f'   ✓ {database}.{table}: {count} rows (deduplicated)')
+            print(f'   ✓ {database}.{table}: VIEW created → {count} rows (deduplicated, live S3 query)')
             success_count += 1
         except Exception as e:
             print(f'   ⚠️  {database}.{table}: SKIPPED - {str(e)[:100]}')

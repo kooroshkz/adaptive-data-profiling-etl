@@ -37,6 +37,11 @@ def make_api_request(
                 
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP error: {e}")
+            # Rate limit (429) or client errors (4xx) should fail immediately - no retry
+            if e.response is not None and 400 <= e.response.status_code < 500:
+                logger.error(f"Client error {e.response.status_code} - failing immediately (no retry)")
+                raise
+            # For server errors (5xx), retry
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
             else:
