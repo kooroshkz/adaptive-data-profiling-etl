@@ -2,14 +2,14 @@ version: 2
 
 sources:
   - name: raw
-    description: Raw weather data from Open-Meteo API stored in S3 Parquet files (Hive partitioned)
+    description: Raw hourly weather data from Open-Meteo API stored in S3 Parquet files (Hive partitioned)
     meta:
-      external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/city=*/hourly_*.parquet', hive_partitioning=true)"
+      external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/city=*/hourly_*.parquet', hive_partitioning=true, union_by_name=true)"
     tables:
       - name: weather_hourly
         description: Hourly weather measurements ingested from API (Hive partitioned by city)
         meta:
-          external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/city=*/hourly_*.parquet', hive_partitioning=true)"
+          external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/city=*/hourly_*.parquet', hive_partitioning=true, union_by_name=true)"
         columns:
           - name: time
             description: Timestamp of measurement
@@ -17,16 +17,16 @@ sources:
               - not_null
           - name: temperature_2m
             description: Air temperature at 2 meters height (Celsius)
-          - name: relative_humidity_2m
-            description: Relative humidity at 2 meters (%)
+          - name: apparent_temperature
+            description: Feels-like temperature combining heat, humidity, and wind
           - name: precipitation
             description: Total precipitation (mm)
-          - name: wind_speed_10m
-            description: Wind speed at 10 meters (km/h)
-          - name: cloud_cover
-            description: Cloud cover percentage
-          - name: pressure_msl
-            description: Atmospheric pressure at sea level (hPa)
+          - name: surface_pressure
+            description: Pressure at ground level (hPa)
+          - name: soil_temperature_7_to_28cm
+            description: Soil temperature at 7-28 cm depth (Celsius)
+          - name: soil_moisture_7_to_28cm
+            description: Soil moisture at 7-28 cm depth
           - name: city_id
             description: City identifier
             tests:
@@ -45,33 +45,15 @@ sources:
             description: When data was ingested
           - name: batch_id
             description: Ingestion batch identifier
-      
-      - name: weather_daily
-        description: Daily weather aggregates from Open-Meteo API
-        meta:
-          external_location: "read_parquet('s3://{{ env_var('S3_BUCKET', 'weather-data-koorosh-thesis') }}/raw/*_daily_*.parquet')"
-        columns:
-          - name: time
-            description: Date of measurement
-            tests:
-              - not_null
-          - name: temperature_2m_max
-            description: Maximum daily temperature (Celsius)
-          - name: temperature_2m_min
-            description: Minimum daily temperature (Celsius)
-          - name: temperature_2m_mean
-            description: Mean daily temperature (Celsius)
-          - name: precipitation_sum
-            description: Total daily precipitation (mm)
-          - name: wind_speed_10m_max
-            description: Maximum wind speed (km/h)
-          - name: city_id
-            description: City identifier
-            tests:
-              - not_null
-          - name: city_name
-            description: City display name
-          - name: ingestion_timestamp
-            description: When data was ingested
-          - name: batch_id
-            description: Ingestion batch identifier
+          - name: synthetic_anomaly_flag
+            description: True when this row contains synthetic anomaly shifts
+          - name: synthetic_shift_pct
+            description: Signed shift percentage of the primary tracked column
+          - name: synthetic_anomaly_target_column
+            description: Primary tracked column mutated for compatibility with existing consumers
+          - name: synthetic_original_value
+            description: Original value of the primary tracked column before synthetic shift
+          - name: synthetic_anomaly_batch_id
+            description: Batch id associated with anomaly injection
+          - name: synthetic_anomaly_details_json
+            description: JSON map with per-column anomaly details in each row

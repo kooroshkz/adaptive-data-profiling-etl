@@ -103,175 +103,32 @@ jobs:
     - name: Run dbt transformations
       run: |
         cd weather_dbt
-        dbt run --full-refresh
+        dbt clean
+        DBT_PARTIAL_PARSE=0 dbt run --full-refresh
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION: ${{ secrets.AWS_REGION }}
         S3_BUCKET: ${{ secrets.S3_BUCKET }}
         
-    - name: Export transformed data to S3
+    - name: Refresh MotherDuck views
       run: |
-        python3 << 'PYEOF'
-        import duckdb
-        import os
-        
-        bucket = os.getenv('S3_BUCKET', 'weather-data-koorosh-thesis')
-        
-        # Connect to DuckDB and configure S3
-        con = duckdb.connect(':memory:')
-        con.execute("INSTALL httpfs; LOAD httpfs;")
-        con.execute(f"SET s3_region='{os.getenv('AWS_REGION', 'us-east-1')}';")
-        con.execute(f"SET s3_access_key_id='{os.getenv('AWS_ACCESS_KEY_ID')}';")
-        con.execute(f"SET s3_secret_access_key='{os.getenv('AWS_SECRET_ACCESS_KEY')}';")
-        
-        # Read from raw, transform, write to mart
-        # This replicates what dbt models do but writes to S3
-        
-        # 1. Staging layer (weather_hourly cleaned)
-        print("Creating staging layer...")
-        staging_query = f"""
-        CREATE OR REPLACE TABLE staging_weather AS
-        SELECT 
-            time,
-            CAST(time AS DATE) as date,
-            EXTRACT(year FROM time) as year,
-            EXTRACT(month FROM time) as month,
-            EXTRACT(day FROM time) as day,
-            EXTRACT(hour FROM time) as hour,
-            COALESCE(temperature_2m, 0.0) as temperature_2m,
-            COALESCE(relative_humidity_2m, 0) as relative_humidity_2m,
-            COALESCE(precipitation, 0.0) as precipitation,
-            COALESCE(wind_speed_10m, 0.0) as wind_speed_10m,
-            COALESCE(cloud_cover, 0) as cloud_cover,
-            COALESCE(pressure_msl, 1013.25) as pressure_msl,
-            city_id,
-            city_name,
-            latitude,
-            longitude,
-            timezone,
-            ingestion_timestamp,
-            batch_id
-        FROM read_parquet('s3://{bucket}/raw/city=*/hourly_*.parquet', hive_partitioning=true)
-        """
-        con.execute(staging_query)
-        staging_count = con.execute("SELECT COUNT(*) FROM staging_weather").fetchone()[0]
-        print(f"Staging: {staging_count} rows")
-        
-        # 2. Mart: Daily aggregations
-        print("Creating mart.weather_daily...")
-        daily_query = f"""
-        CREATE OR REPLACE TABLE mart_weather_daily AS
-        SELECT
-            city_id,
-            city_name,
-            date,
-            MIN(temperature_2m) as temp_min,
-            MAX(temperature_2m) as temp_max,
-            AVG(temperature_2m) as temp_avg,
-            STDDEV(temperature_2m) as temp_stddev,
-            SUM(precipitation) as precip_total,
-            MAX(precipitation) as precip_max,
-            COUNT(CASE WHEN precipitation > 0 THEN 1 END) as hours_with_rain,
-            AVG(wind_speed_10m) as wind_avg,
-            MAX(wind_speed_10m) as wind_max,
-            AVG(relative_humidity_2m) as humidity_avg,
-            AVG(pressure_msl) as pressure_avg,
-            AVG(cloud_cover) as cloud_cover_avg,
-            COUNT(*) as total_hours,
-            MAX(ingestion_timestamp) as last_updated
-        FROM staging_weather
-        GROUP BY city_id, city_name, date
-        ORDER BY date DESC, city_id
-        """
-        con.execute(daily_query)
-        daily_count = con.execute("SELECT COUNT(*) FROM mart_weather_daily").fetchone()[0]
-        print(f"Daily mart: {daily_count} rows")
-        
-        # 3. Mart: Anomalies (z-scores)
-        print("Creating mart.weather_anomalies...")
-        anomaly_query = """
-        CREATE OR REPLACE TABLE mart_weather_anomalies AS
-        WITH daily_stats AS (
-            SELECT
-                city_id,
-                city_name,
-                date,
-                temp_avg,
-                precip_total,
-                wind_max,
-                AVG(temp_avg) OVER (PARTITION BY city_id ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as temp_30d_avg,
-                STDDEV(temp_avg) OVER (PARTITION BY city_id ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as temp_30d_stddev
-            FROM mart_weather_daily
-        )
-        SELECT
-            city_id,
-            city_name,
-            date,
-            temp_avg,
-            temp_30d_avg,
-            temp_30d_stddev,
-            CASE 
-                WHEN temp_30d_stddev > 0 
-                THEN (temp_avg - temp_30d_avg) / temp_30d_stddev
-                ELSE 0 
-            END as temp_zscore,
-            CASE
-                WHEN ABS((temp_avg - temp_30d_avg) / NULLIF(temp_30d_stddev, 0)) > 2 THEN true
-                ELSE false
-            END as is_anomaly
-        FROM daily_stats
-        WHERE temp_30d_stddev IS NOT NULL
-        ORDER BY date DESC, city_id
-        """
-        con.execute(anomaly_query)
-        anomaly_count = con.execute("SELECT COUNT(*) FROM mart_weather_anomalies").fetchone()[0]
-        print(f"Anomalies mart: {anomaly_count} rows")
-        
-        # 4. Write to S3 with Hive partitioning (per city)
-        print("⬆️  Writing to S3 with Hive partitioning...")
-        cities = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
-        
-        # Export staging data per city
-        for city in cities:
-            con.execute(f"""COPY (
-                SELECT * FROM staging_weather WHERE city_id = '{city}'
-            ) TO 's3://{bucket}/staging/city={city}/weather_hourly.parquet' (FORMAT PARQUET)""")
-            print(f"   ✓ staging/city={city}/weather_hourly.parquet")
-        
-        # Export mart daily aggregations per city
-        for city in cities:
-            con.execute(f"""COPY (
-                SELECT * FROM mart_weather_daily WHERE city_id = '{city}'
-            ) TO 's3://{bucket}/mart/daily/city={city}/weather_daily.parquet' (FORMAT PARQUET)""")
-            print(f"   ✓ mart/daily/city={city}/weather_daily.parquet")
-        
-        # Export mart anomalies per city
-        for city in cities:
-            con.execute(f"""COPY (
-                SELECT * FROM mart_weather_anomalies WHERE city_id = '{city}'
-            ) TO 's3://{bucket}/mart/anomalies/city={city}/weather_anomalies.parquet' (FORMAT PARQUET)""")
-            print(f"   ✓ mart/anomalies/city={city}/weather_anomalies.parquet")
-        
-        print(f"\nSuccessfully exported all data to S3 with Hive partitioning")
-        print(f"   Total: {len(cities) * 3} partitioned parquet files")
-        
-        con.close()
-        PYEOF
+        python3 airflow/scripts/refresh_motherduck_views.py
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION: ${{ secrets.AWS_REGION }}
         S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
         
     - name: Summary
       run: |
         echo "dbt transformation pipeline completed!"
         echo ""
-        echo "Transformed data available with Hive partitioning:"
-        echo "  - s3://${{ secrets.S3_BUCKET }}/staging/city=<city>/weather_hourly.parquet"
-        echo "  - s3://${{ secrets.S3_BUCKET }}/mart/daily/city=<city>/weather_daily.parquet"
-        echo "  - s3://${{ secrets.S3_BUCKET }}/mart/anomalies/city=<city>/weather_anomalies.parquet"
+        echo "MotherDuck views refreshed:"
+        echo "  - raw_weather_data.main.<city>"
+        echo "  - weather_analytics.main.weather_daily_with_anomalies_<city>"
+        echo "  - weather_analytics.main.weather_daily_without_anomalies_<city>"
         echo ""
         echo "Cities: amsterdam, new_york, london, paris, tokyo"
         echo ""

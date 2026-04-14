@@ -1,6 +1,10 @@
 with source as (
     -- Read from Hive-partitioned S3 parquet files: city=amsterdam/hourly_*.parquet
-    select * from read_parquet('s3://{{ env_var("S3_BUCKET", "weather-data-koorosh-thesis") }}/raw/city=*/hourly_*.parquet', hive_partitioning = true)
+    select * from read_parquet(
+        's3://{{ env_var("S3_BUCKET", "weather-data-koorosh-thesis") }}/raw/city=*/hourly_*.parquet',
+        hive_partitioning = true,
+        union_by_name = true
+    )
 ),
 
 transformed as (
@@ -14,12 +18,12 @@ transformed as (
         extract(dow from time) as day_of_week,
         extract(quarter from time) as quarter,
         
-        coalesce(temperature_2m, 0.0) as temperature_2m,
-        coalesce(relative_humidity_2m, 0) as relative_humidity_2m,
-        coalesce(precipitation, 0.0) as precipitation,
-        coalesce(wind_speed_10m, 0.0) as wind_speed_10m,
-        coalesce(cloud_cover, 0) as cloud_cover,
-        coalesce(pressure_msl, 1013.25) as pressure_msl,
+        temperature_2m,
+        apparent_temperature,
+        precipitation,
+        surface_pressure,
+        soil_temperature_7_to_28cm,
+        soil_moisture_7_to_28cm,
         
         city_id,
         city_name,
@@ -29,6 +33,12 @@ transformed as (
         
         ingestion_timestamp,
         batch_id,
+        coalesce(synthetic_anomaly_flag, false) as synthetic_anomaly_flag,
+        synthetic_shift_pct,
+        synthetic_anomaly_target_column,
+        synthetic_original_value,
+        synthetic_anomaly_batch_id,
+        synthetic_anomaly_details_json,
         
         case when temperature_2m is null then 1 else 0 end as has_missing_temp,
         case when precipitation is null then 1 else 0 end as has_missing_precip

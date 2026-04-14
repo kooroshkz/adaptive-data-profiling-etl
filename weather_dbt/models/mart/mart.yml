@@ -1,8 +1,8 @@
 version: 2
 
 models:
-  - name: weather_daily
-    description: Daily weather aggregations and statistics
+  - name: weather_daily_with_anomalies
+    description: Daily weather aggregates computed from raw data with synthetic anomalies included
     columns:
       - name: city_id
         description: City identifier
@@ -12,29 +12,33 @@ models:
         description: Date of aggregation
         tests:
           - not_null
-      - name: temp_avg
-        description: Average daily temperature
-      - name: precip_total
+      - name: temperature_2m_avg
+        description: Average daily air temperature
+      - name: precipitation_total
         description: Total daily precipitation
       - name: total_hours
         description: Number of hourly records aggregated
         tests:
           - not_null
+      - name: anomaly_hours
+        description: Number of hourly rows flagged as synthetic anomalies
 
-  - name: weather_anomalies
-    description: Weather measurements with statistical anomaly detection
+  - name: weather_daily_without_anomalies
+    description: Daily weather aggregates computed from raw data after removing synthetic anomaly rows
     columns:
-      - name: time
-        description: Measurement timestamp
-        tests:
-          - not_null
       - name: city_id
         description: City identifier
         tests:
           - not_null
-      - name: temp_zscore
-        description: Z-score for temperature (standard deviations from mean)
-      - name: is_temp_anomaly
-        description: Flag for temperature anomaly (>3 std dev)
+      - name: date
+        description: Date of aggregation
+        tests:
+          - not_null
+      - name: temperature_2m_avg
+        description: Average daily air temperature (cleaned)
+      - name: precipitation_total
+        description: Total daily precipitation (cleaned)
+      - name: total_hours
+        description: Number of hourly records aggregated after anomaly removal
         tests:
           - not_null

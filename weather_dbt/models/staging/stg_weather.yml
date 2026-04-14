@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: stg_weather
-    description: Cleaned and enriched weather data with date dimensions
+    description: Hourly weather data with six selected API variables plus synthetic anomaly metadata
     columns:
       - name: time
         description: Measurement timestamp
@@ -20,13 +20,21 @@ models:
               to: source('raw', 'weather_hourly')
               field: city_id
       - name: temperature_2m
-        description: Temperature in Celsius (nulls filled with 0)
-        tests:
-          - not_null
+        description: Air temperature measured 2 meters above ground
+      - name: apparent_temperature
+        description: Feels-like temperature
       - name: precipitation
-        description: Precipitation in mm (nulls filled with 0)
-        tests:
-          - not_null
+        description: Total rain and snow in mm
+      - name: surface_pressure
+        description: Pressure at ground level
+      - name: soil_temperature_7_to_28cm
+        description: Soil temperature in 7-28 cm depth
+      - name: soil_moisture_7_to_28cm
+        description: Soil moisture in 7-28 cm depth
+      - name: synthetic_anomaly_flag
+        description: True if any tracked weather variable was synthetically shifted
+      - name: synthetic_anomaly_details_json
+        description: JSON map of per-column anomaly details for this row
     tests:
       - unique:
-          column_name: "time || '_' || city_id"
+          column_name: "time || '_' || city_id || '_' || batch_id"

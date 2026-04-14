@@ -237,6 +237,8 @@ def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     print(f'Creating {database} VIEWs (direct S3 query, no caching)...')
     con.execute(f'CREATE DATABASE IF NOT EXISTS {database};')
     con.execute(f'USE {database};')
+    con.execute('CREATE SCHEMA IF NOT EXISTS main;')
+    con.execute('USE main;')
     
     success_count = 0
     failed_tables = []
@@ -244,16 +246,17 @@ def refresh_motherduck_tables(database, tables, s3_pattern_fn):
     for table in tables:
         s3_pattern = s3_pattern_fn(table)
         try:
-            # Create VIEW instead of TABLE - always queries S3 directly
-            # Deduplication: keep only the latest ingestion per time/city
+            # Create VIEW instead of TABLE - always queries S3 directly.
+            # Deduplicate by city_id + time so the latest ingested file wins.
             sql = f"""
+            DROP VIEW IF EXISTS {table};
             CREATE OR REPLACE VIEW {table} AS 
             SELECT * EXCLUDE (rn) FROM (
                 SELECT *, ROW_NUMBER() OVER (
-                    PARTITION BY time, city 
+                    PARTITION BY time, city_id 
                     ORDER BY ingestion_timestamp DESC
                 ) as rn
-                FROM read_parquet('{s3_pattern}', hive_partitioning=true)
+                FROM read_parquet('{s3_pattern}', hive_partitioning=true, union_by_name=true)
             ) WHERE rn = 1;
             """
             con.execute(sql)

@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f8fb;
+  --foreground: #163042;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-plex-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), sans-serif;
+}
+
+.bg-grid {
+  background-image:
+    radial-gradient(circle at 20% 14%, rgba(16, 145, 155, 0.2), transparent 40%),
+    radial-gradient(circle at 88% 0%, rgba(45, 116, 185, 0.15), transparent 32%),
+    linear-gradient(180deg, #edf5fb 0%, #f6fbfe 45%, #f8fbff 100%);
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.875rem;
+}
+
+.control > span {
+  font-size: 0.73rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #355164;
+}
+
+.control > select,
+.control > input[type="range"] {
+  border-radius: 0.7rem;
+  border: 1px solid #bfd0dd;
+  background: #f8fbfe;
+  color: #143448;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.control > select:focus,
+.control > input[type="range"]:focus {
+  outline: 2px solid #2596be;
+  outline-offset: 1px;
+}
+
+.chart-loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  border-radius: 0.9rem;
+  border: 1px dashed #adc3d6;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f4f8fc,
+    #f4f8fc 10px,
+    #ecf4fb 10px,
+    #ecf4fb 20px
+  );
+  color: #325163;
+}

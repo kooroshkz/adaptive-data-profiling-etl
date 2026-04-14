@@ -3,6 +3,7 @@ Weather Data Ingestion DAG
 Runs daily at 2 AM UTC to fetch weather data for 5 cities
 """
 
+import random
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
@@ -38,6 +39,8 @@ dag = DAG(
 
 # Cities to ingest
 CITIES = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
+DAILY_ANOMALY_CITY_COUNT = 2
+DAILY_ANOMALY_ROWS_PER_SELECTED_CITY = 1
 
 # Install Python dependencies (only needs to run once, but safe to repeat)
 install_deps = BashOperator(
@@ -45,6 +48,20 @@ install_deps = BashOperator(
     bash_command='''
     pip install pandas pyarrow requests boto3 duckdb --quiet
     ''',
+    dag=dag,
+)
+
+
+def select_daily_anomaly_cities():
+    """Pick two random cities per DAG run for sparse anomaly injection."""
+    selected = random.sample(CITIES, DAILY_ANOMALY_CITY_COUNT)
+    print(f"Selected cities for daily sparse anomalies: {selected}")
+    return selected
+
+
+select_anomaly_cities = PythonOperator(
+    task_id='select_daily_anomaly_cities',
+    python_callable=select_daily_anomaly_cities,
     dag=dag,
 )
 
@@ -62,7 +79,16 @@ for idx, city in enumerate(CITIES):
         bash_command=f'''
         set -e  # Exit immediately if command fails
         cd /opt/airflow/scripts
-        python weather_ingest.py --city {city} --mode smart
+        ANOMALY_CITIES='{{{{ ti.xcom_pull(task_ids="select_daily_anomaly_cities") | join(",") }}}}'
+        EXTRA_ARGS=""
+        if echo ",$ANOMALY_CITIES," | grep -q ",{city},"; then
+            EXTRA_ARGS="--inject-synthetic-anomalies --fixed-anomaly-rows {DAILY_ANOMALY_ROWS_PER_SELECTED_CITY}"
+            echo "Applying sparse daily anomalies for {city} with args: $EXTRA_ARGS"
+        else
+            echo "No synthetic anomalies for {city} in this run"
+        fi
+
+        python weather_ingest.py --city {city} --mode smart $EXTRA_ARGS
         ''',
         priority_weight=10 - idx,  # amsterdam=10, new_york=9, london=8, paris=7, tokyo=6
         dag=dag,
@@ -103,6 +129,7 @@ log_completion = BashOperator(
     echo "Weather ingestion completed at $(date)"
     echo "=========================================="
     echo "✓ Smart S3-aware ingestion (no duplicates, no gaps)"
+    echo "✓ Sparse synthetic anomalies enabled (2 rows total across two cities per run)"
     echo "✓ Raw data uploaded to S3 per-city (real-time)"
     echo "✓ dbt transformations completed in GitHub Actions"
     echo "✓ MotherDuck VIEWs query S3 directly (always fresh)"
@@ -131,5 +158,5 @@ notify_failure = PythonOperator(
 )
 
 # Define task dependencies
-install_deps >> ingestion_tasks >> trigger_dbt_transform >> log_completion
-[log_completion, install_deps, trigger_dbt_transform] >> notify_failure
+install_deps >> select_anomaly_cities >> ingestion_tasks >> trigger_dbt_transform >> log_completion
+[log_completion, install_deps, select_anomaly_cities, trigger_dbt_transform] >> notify_failure

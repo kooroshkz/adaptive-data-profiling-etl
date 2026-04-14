@@ -42,6 +42,9 @@ CITIES = ['amsterdam', 'new_york', 'london', 'paris', 'tokyo']
 # Calculate date range: 2024-01-01 to yesterday
 BACKFILL_START = "2024-01-01"
 yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+SYNTHETIC_ANOMALY_RATE = 0.01
+SYNTHETIC_ANOMALY_SHIFT_PCT_MEAN = 0.10
+SYNTHETIC_PER_COLUMN_PROB = 0.35
 
 # Clean old parquet files from both local and S3 to prevent duplicates
 def clean_s3_and_local_data():
@@ -65,19 +68,21 @@ def clean_s3_and_local_data():
         for city in cities:
             prefix = f'raw/city={city}/'
             print(f"   Listing objects in {prefix}...")
-            
-            response = s3.list_objects_v2(Bucket=s3_bucket, Prefix=prefix)
-            if 'Contents' in response:
-                objects_to_delete = [{'Key': obj['Key']} for obj in response['Contents']]
-                if objects_to_delete:
-                    print(f"   Deleting {len(objects_to_delete)} objects from {city}...")
-                    s3.delete_objects(
-                        Bucket=s3_bucket,
-                        Delete={'Objects': objects_to_delete}
-                    )
-                    print(f"   ✓ Deleted {len(objects_to_delete)} files from S3")
-                else:
-                    print(f"   (no files to delete)")
+
+            paginator = s3.get_paginator('list_objects_v2')
+            deleted_count = 0
+            for page in paginator.paginate(Bucket=s3_bucket, Prefix=prefix):
+                objects_to_delete = [{'Key': obj['Key']} for obj in page.get('Contents', [])]
+                if not objects_to_delete:
+                    continue
+
+                for i in range(0, len(objects_to_delete), 1000):
+                    chunk = objects_to_delete[i:i + 1000]
+                    s3.delete_objects(Bucket=s3_bucket, Delete={'Objects': chunk})
+                    deleted_count += len(chunk)
+
+            if deleted_count:
+                print(f"   ✓ Deleted {deleted_count} files from S3")
             else:
                 print(f"   (no files found)")
         
@@ -128,6 +133,10 @@ log_backfill_info = BashOperator(
     echo "Start Date: {BACKFILL_START}"
     echo "End Date: {yesterday}"
     echo "Cities: {', '.join(CITIES)}"
+    echo "Synthetic anomalies: enabled"
+    echo "Synthetic anomaly rate: {SYNTHETIC_ANOMALY_RATE}"
+    echo "Synthetic anomaly target mean shift: {SYNTHETIC_ANOMALY_SHIFT_PCT_MEAN}"
+    echo "Synthetic per-column mutation probability: {SYNTHETIC_PER_COLUMN_PROB}"
     echo "========================================"
     ''',
     dag=dag,
@@ -147,7 +156,15 @@ for idx, city in enumerate(CITIES):
         {delay_command}
         echo "Starting backfill for {city}..."
         cd /opt/airflow/scripts
-        python weather_ingest.py --city {city} --mode custom --start-date {BACKFILL_START} --end-date {yesterday}
+                python weather_ingest.py \
+                    --city {city} \
+                    --mode custom \
+                    --start-date {BACKFILL_START} \
+                    --end-date {yesterday} \
+                    --inject-synthetic-anomalies \
+                    --anomaly-rate {SYNTHETIC_ANOMALY_RATE} \
+                    --anomaly-shift-pct-mean {SYNTHETIC_ANOMALY_SHIFT_PCT_MEAN} \
+                    --per-column-anomaly-prob {SYNTHETIC_PER_COLUMN_PROB}
         EXIT_CODE=$?
         if [ $EXIT_CODE -ne 0 ]; then
             echo "Backfill FAILED for {city} (exit code: $EXIT_CODE)"
