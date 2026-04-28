@@ -26,8 +26,10 @@ type SummaryRow = {
 type ExpScatterPoint = {
   time_ms: number;
   y_value: number | null;
+  original_value: number | null;
   y_true: number;
   y_pred: number;
+  shift_pct: number;
 };
 
 // ─── Weather scatter types (used as fallback / data quality tab) ──────────────
@@ -114,8 +116,8 @@ function expToScatterPoint(p: ExpScatterPoint, cityId: string, targetColumn: str
     x: p.time_ms,
     y: p.y_value ?? 0,
     isAnomaly: p.y_true === 1,
-    shiftPct: null,
-    actualValue: p.y_value,
+    shiftPct: p.shift_pct > 0 ? p.shift_pct : null,
+    actualValue: p.original_value,  // pre-injection original value (null for normal rows)
     targetColumn,
     anomalyHours: null,
   };
@@ -287,10 +289,65 @@ export default function ExperimentsPage() {
     if (expScatterPoints.length === 0) return null;
     const tp = expScatterPoints.filter((p) => p.y_true === 1 && p.y_pred === 1).length;
     const fn = expScatterPoints.filter((p) => p.y_true === 1 && p.y_pred === 0).length;
-    const fp = expScatterPoints.filter((p) => p.y_true === 0 && p.y_pred === 1).length;
-    const tn = expScatterPoints.filter((p) => p.y_true === 0 && p.y_pred === 0).length;
-    return { tp, fn, fp, tn, total: expScatterPoints.length };
+    return { tp, fn, total: expScatterPoints.length };
   }, [expScatterPoints]);
+
+  // ── Shift distribution (detected vs missed per magnitude bucket) ──────
+  const shiftDistribution = useMemo(() => {
+    const anomalies = expScatterPoints.filter((p) => p.y_true === 1 && p.shift_pct > 0);
+    if (anomalies.length === 0) return null;
+    // 2 % intervals up to 20 %, then a catch-all
+    const buckets: { label: string; min: number; max: number }[] = [];
+    for (let i = 0; i < 20; i += 2) {
+      buckets.push({ label: `${i}–${i + 2}%`, min: i / 100, max: (i + 2) / 100 });
+    }
+    buckets.push({ label: ">20%", min: 0.20, max: Infinity });
+    return buckets.map((b) => {
+      const inBucket = anomalies.filter((p) => p.shift_pct >= b.min && p.shift_pct < b.max);
+      if (inBucket.length === 0) return null;
+      const detected = inBucket.filter((p) => p.y_pred === 1).length;
+      return { label: b.label, total: inBucket.length, detected, missed: inBucket.length - detected };
+    }).filter(Boolean) as { label: string; total: number; detected: number; missed: number }[];
+  }, [expScatterPoints]);
+
+  const shiftChartOption = useMemo((): EChartsOption => {
+    if (!shiftDistribution || shiftDistribution.length === 0) return {};
+    const labels = shiftDistribution.map((b) => b.label);
+    const detectedData = shiftDistribution.map((b) => b.detected);
+    const missedData = shiftDistribution.map((b) => b.missed);
+    const rateData = shiftDistribution.map((b) =>
+      b.total > 0 ? parseFloat(((b.detected / b.total) * 100).toFixed(1)) : 0
+    );
+    return {
+      animation: false,
+      legend: { top: 4, textStyle: { color: "#34556a" } },
+      grid: { left: 50, right: 60, top: 44, bottom: 56 },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: (params: unknown) => {
+          const items = params as { seriesName: string; value: number; color: string; dataIndex: number; axisValue: string }[];
+          const bucket = shiftDistribution[items[0]?.dataIndex ?? 0];
+          if (!bucket) return "";
+          return [
+            `<b>Shift ${items[0]?.axisValue}</b>`,
+            `Total injected: ${bucket.total}`,
+            ...items.map((p) => `<span style="color:${p.color}">●</span> ${p.seriesName}: ${p.value}${p.seriesName === "Detection Rate" ? "%" : ""}`),
+          ].join("<br/>");
+        },
+      },
+      xAxis: { type: "category", data: labels, axisLabel: { color: "#325163" } },
+      yAxis: [
+        { type: "value", name: "Anomalies", axisLabel: { color: "#325163" }, minInterval: 1 },
+        { type: "value", name: "Rate %", min: 0, max: 100, axisLabel: { color: "#a78bfa", formatter: (v: number) => `${v}%` }, splitLine: { show: false } },
+      ],
+      series: [
+        { name: "Detected", type: "bar", stack: "total", data: detectedData, itemStyle: { color: "#22c55e" }, barMaxWidth: 40 },
+        { name: "Missed", type: "bar", stack: "total", data: missedData, itemStyle: { color: "#6366f1" }, barMaxWidth: 40 },
+        { name: "Detection Rate", type: "line", yAxisIndex: 1, data: rateData, lineStyle: { color: "#a78bfa", width: 2 }, itemStyle: { color: "#a78bfa" }, symbol: "circle", symbolSize: 7 },
+      ],
+    };
+  }, [shiftDistribution]);
 
   // ── Time range buttons ────────────────────────────────────────────────
   const timeButtons = useMemo(() => {
@@ -324,14 +381,24 @@ export default function ExperimentsPage() {
       const p = (params as { data?: ChartDatum })?.data?.point;
       if (!p) return "";
       if (usingExpData) {
-        const category = p.isAnomaly
-          ? (detectedPts.some((d) => d.x === p.x) ? "✓ Detected" : "✗ Missed")
-          : "Normal";
+        if (p.isAnomaly) {
+          const detected = detectedPts.some((d) => d.x === p.x);
+          const status = detected ? "✓ Detected" : "✗ Missed";
+          const origStr = p.actualValue != null ? p.actualValue.toFixed(3) : "—";
+          const shiftStr = p.shiftPct != null ? `${(p.shiftPct * 100).toFixed(1)}%` : "—";
+          return [
+            `<b>${p.cityId}</b>`,
+            `time: ${fmtDateTime(p.x)}`,
+            `original: ${origStr} → ${p.y.toFixed(3)}`,
+            `shift: ${shiftStr}`,
+            `<b>${status}</b>`,
+          ].join("<br/>");
+        }
         return [
           `<b>${p.cityId}</b>`,
           `time: ${fmtDateTime(p.x)}`,
           `${yColumn}: ${p.y.toFixed(3)}`,
-          `<b>${category}</b>`,
+          `<b>Normal</b>`,
         ].join("<br/>");
       }
       return [
@@ -577,44 +644,26 @@ export default function ExperimentsPage() {
             </span>
           </div>
 
-          {/* Confusion matrix for selected column */}
+          {/* Detection outcome — only injected anomalies matter as ground truth */}
           {detectionStats && (
-            <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="mb-6 grid grid-cols-2 gap-3">
               <MetricTile
-                label="True Positives"
-                sub="Detected correctly"
+                label="Detected (TP)"
+                sub="Injected anomalies caught"
                 value={detectionStats.tp}
                 total={detectionStats.tp + detectionStats.fn}
-                ratioLabel="of all anomalies"
+                ratioLabel="of injected anomalies"
                 color="bg-green-50 border-green-200 text-green-900"
                 barColor="bg-green-500"
               />
               <MetricTile
-                label="False Negatives"
-                sub="Anomalies missed"
+                label="Missed (FN)"
+                sub="Injected anomalies not caught"
                 value={detectionStats.fn}
                 total={detectionStats.tp + detectionStats.fn}
-                ratioLabel="of all anomalies"
+                ratioLabel="of injected anomalies"
                 color="bg-indigo-50 border-indigo-200 text-indigo-900"
                 barColor="bg-indigo-400"
-              />
-              <MetricTile
-                label="False Positives"
-                sub="Normal flagged wrong"
-                value={detectionStats.fp}
-                total={detectionStats.tn + detectionStats.fp}
-                ratioLabel="of normal points"
-                color="bg-amber-50 border-amber-200 text-amber-900"
-                barColor="bg-amber-400"
-              />
-              <MetricTile
-                label="True Negatives"
-                sub="Correctly clear"
-                value={detectionStats.tn}
-                total={detectionStats.tn + detectionStats.fp}
-                ratioLabel="of normal points"
-                color="bg-slate-50 border-slate-200 text-slate-700"
-                barColor="bg-slate-400"
               />
             </div>
           )}
@@ -679,6 +728,19 @@ export default function ExperimentsPage() {
             </table>
           </div>
         </section>
+
+        {/* Shift vs Detection Rate */}
+        {shiftDistribution && shiftDistribution.length > 0 && (
+          <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm md:p-6">
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-slate-800">Shift vs Detection Rate</h2>
+              <span className="text-xs text-slate-400">{city || "all"} · {yColumn} · {scope}</span>
+            </div>
+            <div className="h-[280px]">
+              <ReactECharts option={shiftChartOption} style={{ height: "100%", width: "100%" }} notMerge opts={{ renderer: "svg" }} />
+            </div>
+          </section>
+        )}
 
       </main>
     </div>

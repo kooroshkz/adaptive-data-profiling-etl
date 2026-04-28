@@ -25,6 +25,14 @@ fi
 
 cd "$REPO_ROOT"
 
+# Load credentials from airflow/.env if not already in the environment
+if [[ -f "$REPO_ROOT/airflow/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$REPO_ROOT/airflow/.env"
+  set +a
+fi
+
 echo "[INFO] Python : $PYTHON"
 echo "[INFO] S3_BUCKET=${S3_BUCKET:-weather-data-koorosh-thesis}"
 echo ""

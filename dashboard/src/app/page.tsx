@@ -405,7 +405,7 @@ export default function Home() {
 
             <label className="control">
               <span>City</span>
-              <select value={city} onChange={(e) => setCity(e.target.value)} disabled={!meta}>
+              <select value={city} onChange={(e) => setCity(e.target.value)} disabled={!meta} suppressHydrationWarning>
                 {(meta?.cities ?? []).map((cityOption) => (
                   <option key={cityOption} value={cityOption}>
                     {cityOption}
@@ -416,7 +416,7 @@ export default function Home() {
 
             <label className="control">
               <span>Y Axis</span>
-              <select value={yColumn} onChange={(e) => setYColumn(e.target.value)} disabled={!meta}>
+              <select value={yColumn} onChange={(e) => setYColumn(e.target.value)} disabled={!meta} suppressHydrationWarning>
                 {(meta?.numericColumns ?? []).map((column) => (
                   <option key={column} value={column}>
                     {column}

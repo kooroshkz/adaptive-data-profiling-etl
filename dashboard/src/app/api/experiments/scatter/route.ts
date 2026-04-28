@@ -7,8 +7,10 @@ const ARTIFACTS_DIR = path.resolve(process.cwd(), "../experiments/automl/artifac
 export type ExpScatterPoint = {
   time_ms: number;
   y_value: number | null;
+  original_value: number | null;
   y_true: number;
   y_pred: number;
+  shift_pct: number;
 };
 
 function parseCSV(content: string): Record<string, string>[] {
@@ -48,6 +50,8 @@ export async function GET(request: NextRequest) {
     const rawRows = parseCSV(content);
 
     const hasYValue = rawRows.length > 0 && "y_value" in rawRows[0];
+    const hasShiftPct = rawRows.length > 0 && "shift_pct" in rawRows[0];
+    const hasOriginal = rawRows.length > 0 && "original_value" in rawRows[0];
 
     // Deduplicate on time_ms — overlapping parquet files from older runs may
     // have produced multiple identical rows. Last writer wins (same values anyway).
@@ -55,11 +59,15 @@ export async function GET(request: NextRequest) {
     for (const r of rawRows) {
       const time_ms = parseInt(r.time_ms, 10);
       if (isNaN(time_ms)) continue;
+      const origRaw = hasOriginal ? r.original_value : undefined;
       seen.set(time_ms, {
         time_ms,
         y_value: hasYValue && r.y_value ? parseFloat(r.y_value) : null,
+        original_value: origRaw && origRaw !== "" && origRaw !== "nan" && origRaw !== "NaN"
+          ? parseFloat(origRaw) : null,
         y_true: parseInt(r.y_true ?? "0", 10),
         y_pred: parseInt(r.y_pred ?? "0", 10),
+        shift_pct: hasShiftPct && r.shift_pct ? parseFloat(r.shift_pct) : 0,
       });
     }
 

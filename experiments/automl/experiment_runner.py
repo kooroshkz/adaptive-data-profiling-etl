@@ -23,14 +23,61 @@ from optuna_config import create_study, suggest_model_and_params
 from pyod_configs import FEATURE_COLUMNS, build_model
 
 
-def prepare_xy(df: pd.DataFrame, feature_cols: list[str]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    work = df[["time", *feature_cols, "y_true"]].dropna(subset=["time"]).copy()
+def prepare_xy(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    target_column: str | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return (times, X, y, y_values, shift_pct, original_values).
+
+    For univariate scope (target_column is a single feature column):
+      y_true=1 only when that specific column was injected, extracted from
+      synthetic_anomaly_details_json. shift_pct and original_value are also
+      column-specific.
+
+    For multivariate scope (target_column=="ALL_FEATURES" or None):
+      y_true uses the row-level synthetic_anomaly_flag.
+    """
+    all_extra = ["y_true", "synthetic_shift_pct", "synthetic_anomaly_details_json"]
+    extra_cols = [c for c in all_extra if c in df.columns]
+    work = df[["time", *feature_cols, *extra_cols]].dropna(subset=["time"]).copy()
+
+    n = len(work)
     times = (pd.to_datetime(work["time"]).astype("int64") // 10**6).to_numpy(dtype="int64")
     X = work[feature_cols].to_numpy(dtype=float)
-    y = work["y_true"].to_numpy(dtype=int)
-    # First feature column used as the scatter plot Y axis value.
     y_values = work[feature_cols[0]].to_numpy(dtype=float)
-    return times, X, y, y_values
+
+    y = np.zeros(n, dtype=int)
+    shift_pct = np.zeros(n, dtype=float)
+    original_values: np.ndarray = np.full(n, np.nan)
+
+    use_col_specific = (
+        "synthetic_anomaly_details_json" in work.columns
+        and target_column is not None
+        and target_column != "ALL_FEATURES"
+    )
+
+    if use_col_specific:
+        for i, json_str in enumerate(work["synthetic_anomaly_details_json"]):
+            if pd.isna(json_str):
+                continue
+            try:
+                d = json.loads(str(json_str))
+                detail = d.get(target_column)
+                if isinstance(detail, dict):
+                    y[i] = 1
+                    shift_pct[i] = abs(float(detail.get("shift_pct", 0.0)))
+                    if detail.get("actual") is not None:
+                        original_values[i] = float(detail["actual"])
+            except (ValueError, TypeError, AttributeError):
+                pass
+    else:
+        if "y_true" in work.columns:
+            y = work["y_true"].to_numpy(dtype=int)
+        if "synthetic_shift_pct" in work.columns:
+            shift_pct = work["synthetic_shift_pct"].to_numpy(dtype=float)
+
+    return times, X, y, y_values, shift_pct, original_values
 
 
 def split_train_valid(
@@ -84,6 +131,8 @@ def optimize_scope(
     X: np.ndarray,
     y: np.ndarray,
     y_values: np.ndarray,
+    shift_pct: np.ndarray,
+    original_values: np.ndarray,
     n_trials: int,
     seed: int,
 ) -> tuple[EvalResult, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
@@ -136,10 +185,12 @@ def optimize_scope(
             "time_ms": times,
             "city_id": city,
             "target_column": target_column,
-            "y_value": y_values,   # actual sensor reading for scatter Y axis
+            "y_value": y_values,        # shifted (injected) sensor value
+            "original_value": original_values,  # pre-injection value; NaN for normal rows
             "y_true": y,
             "y_pred": y_pred_all,
             "is_correct": (y == y_pred_all).astype(int),
+            "shift_pct": shift_pct,     # absolute Shift; 0 for non-anomaly rows
         }
     )
 
@@ -196,7 +247,9 @@ def run_experiments(
                 ]
 
                 for target_column, feature_cols in feature_sets:
-                    times, X, y, y_values = prepare_xy(df_city, feature_cols)
+                    times, X, y, y_values, shift_pct, original_values = prepare_xy(
+                        df_city, feature_cols, target_column=target_column
+                    )
                     if len(X) < 20:
                         print(f"[WARN] Not enough rows for city={city}, target={target_column}. Skipping.")
                         continue
@@ -211,6 +264,8 @@ def run_experiments(
                         X=X,
                         y=y,
                         y_values=y_values,
+                        shift_pct=shift_pct,
+                        original_values=original_values,
                         n_trials=n_trials,
                         seed=seed,
                     )

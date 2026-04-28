@@ -11,6 +11,26 @@ import pandas as pd
 from pyod_configs import FEATURE_COLUMNS
 
 
+def _load_env_fallback() -> None:
+    """Load credentials from airflow/.env when not already present in process env."""
+    repo_root = Path(__file__).resolve().parents[2]
+    env_path = repo_root / "airflow" / ".env"
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and os.getenv(key) is None:
+            os.environ[key] = value
+
+
+_load_env_fallback()
+
+
 def sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
@@ -87,7 +107,10 @@ def load_city_data_from_local(
             time,
             city_id,
             {", ".join(f"MAX({c}) AS {c}" for c in FEATURE_COLUMNS)},
-            CAST(MAX(COALESCE(CAST(synthetic_anomaly_flag AS INTEGER), 0)) AS INTEGER) AS y_true
+            CAST(MAX(COALESCE(CAST(synthetic_anomaly_flag AS INTEGER), 0)) AS INTEGER) AS y_true,
+            MAX(ABS(COALESCE(CAST(synthetic_shift_pct AS DOUBLE), 0.0))) AS synthetic_shift_pct,
+            MAX(CASE WHEN COALESCE(CAST(synthetic_anomaly_flag AS INTEGER), 0) = 1
+                THEN synthetic_anomaly_details_json ELSE NULL END) AS synthetic_anomaly_details_json
         FROM read_parquet({paths_literal}, union_by_name=true)
         WHERE time IS NOT NULL{date_filters}
         GROUP BY time, city_id
@@ -126,7 +149,10 @@ def load_city_data_from_s3(
             time,
             city_id,
             {", ".join(f"MAX({c}) AS {c}" for c in FEATURE_COLUMNS)},
-            CAST(MAX(COALESCE(CAST(synthetic_anomaly_flag AS INTEGER), 0)) AS INTEGER) AS y_true
+            CAST(MAX(COALESCE(CAST(synthetic_anomaly_flag AS INTEGER), 0)) AS INTEGER) AS y_true,
+            MAX(ABS(COALESCE(CAST(synthetic_shift_pct AS DOUBLE), 0.0))) AS synthetic_shift_pct,
+            MAX(CASE WHEN COALESCE(CAST(synthetic_anomaly_flag AS INTEGER), 0) = 1
+                THEN synthetic_anomaly_details_json ELSE NULL END) AS synthetic_anomaly_details_json
         FROM read_parquet(
             's3://{bucket}/raw/city={city}/hourly_*.parquet',
             hive_partitioning=true,

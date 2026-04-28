@@ -120,7 +120,7 @@ class WeatherIngestion:
 
         anomaly_indices = set(random.sample(range(total_rows), target_count)) if target_count else set()
 
-        # Use a bounded random shift magnitude around anomaly_shift_pct_mean with random direction.
+        # Use a bounded random Shift around anomaly_shift_pct_mean with random direction.
         min_shift = max(0.0, self.anomaly_shift_pct_mean * 0.5)
         max_shift = self.anomaly_shift_pct_mean * 1.5
 
