@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from pyod.models.copod import COPOD
+from pyod.models.ecod import ECOD
 from pyod.models.hbos import HBOS
 from pyod.models.iforest import IForest
 from pyod.models.lof import LOF
-from pyod.models.ocsvm import OCSVM
 
 
 DEFAULT_CITIES = ["amsterdam", "london", "new_york", "paris", "tokyo"]
@@ -21,7 +22,10 @@ FEATURE_COLUMNS = [
     "soil_moisture_7_to_28cm",
 ]
 
-SUPPORTED_MODELS = ["IForest", "LOF", "OCSVM", "HBOS"]
+# OCSVM removed: O(n²) scaling makes it prohibitively slow on 60k rows.
+# COPOD and ECOD added: linear-time copula/empirical-CDF methods that routinely
+# outperform density-based methods on tabular data.
+SUPPORTED_MODELS = ["IForest", "LOF", "HBOS", "COPOD", "ECOD"]
 
 
 def build_model(model_name: str, params: dict[str, Any]):
@@ -31,6 +35,7 @@ def build_model(model_name: str, params: dict[str, Any]):
             n_estimators=params["n_estimators"],
             max_samples=params["max_samples"],
             random_state=42,
+            n_jobs=-1,
         )
     if model_name == "LOF":
         return LOF(
@@ -40,13 +45,6 @@ def build_model(model_name: str, params: dict[str, Any]):
             metric="minkowski",
             p=2,
         )
-    if model_name == "OCSVM":
-        return OCSVM(
-            contamination=params["contamination"],
-            kernel=params["kernel"],
-            nu=params["nu"],
-            gamma=params["gamma"],
-        )
     if model_name == "HBOS":
         return HBOS(
             contamination=params["contamination"],
@@ -54,4 +52,8 @@ def build_model(model_name: str, params: dict[str, Any]):
             alpha=params["alpha"],
             tol=params["tol"],
         )
+    if model_name == "COPOD":
+        return COPOD(contamination=params["contamination"])
+    if model_name == "ECOD":
+        return ECOD(contamination=params["contamination"])
     raise ValueError(f"Unsupported model: {model_name}")

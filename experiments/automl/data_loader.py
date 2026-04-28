@@ -60,28 +60,39 @@ def load_city_data_from_local(
     start_date: str | None,
     end_date: str | None,
 ) -> pd.DataFrame:
-    local_file = latest_local_city_parquet(city)
-    if local_file is None:
+    city_dir = Path("airflow/data/raw") / f"city={city}"
+    candidates = sorted(city_dir.glob("hourly_*.parquet"))
+    if not candidates:
         return pd.DataFrame()
+
+    # Build a JSON array literal so DuckDB reads all files in one pass.
+    # Multiple overlapping parquet files (different ingestion batches) can produce
+    # duplicate (time, city_id) rows. We deduplicate by grouping on those keys and
+    # taking MAX(synthetic_anomaly_flag) so that any injection run marking a timestamp
+    # as anomalous wins over an older file that has NULL for that column.
+    paths_literal = "[" + ", ".join(f"'{p.as_posix()}'" for p in candidates) + "]"
+
+    date_filters = ""
+    params: list[str] = []
+    if start_date:
+        date_filters += " AND CAST(time AS DATE) >= CAST(? AS DATE)"
+        params.append(start_date)
+    if end_date:
+        date_filters += " AND CAST(time AS DATE) <= CAST(? AS DATE)"
+        params.append(end_date)
 
     con = duckdb.connect(":memory:")
     query = f"""
         SELECT
             time,
             city_id,
-            {", ".join(FEATURE_COLUMNS)},
-            CAST(COALESCE(synthetic_anomaly_flag, FALSE) AS INTEGER) AS y_true
-        FROM read_parquet('{local_file.as_posix()}')
-        WHERE time IS NOT NULL
+            {", ".join(f"MAX({c}) AS {c}" for c in FEATURE_COLUMNS)},
+            CAST(MAX(COALESCE(CAST(synthetic_anomaly_flag AS INTEGER), 0)) AS INTEGER) AS y_true
+        FROM read_parquet({paths_literal}, union_by_name=true)
+        WHERE time IS NOT NULL{date_filters}
+        GROUP BY time, city_id
+        ORDER BY time
     """
-    params: list[str] = []
-    if start_date:
-        query += " AND CAST(time AS DATE) >= CAST(? AS DATE)"
-        params.append(start_date)
-    if end_date:
-        query += " AND CAST(time AS DATE) <= CAST(? AS DATE)"
-        params.append(end_date)
-    query += " ORDER BY time"
     return con.execute(query, params).fetch_df()
 
 
@@ -92,10 +103,12 @@ def load_city_data_from_s3(
     start_date: str | None,
     end_date: str | None,
 ) -> pd.DataFrame:
+    # Do NOT filter on synthetic_anomaly_flag IS NOT NULL — historical rows pre-dating
+    # anomaly injection have NULL for that column, which is correctly treated as FALSE
+    # via COALESCE. Filtering here would drop the vast majority of the dataset.
     where_clauses = [
         "city_id = ?",
         "time IS NOT NULL",
-        "synthetic_anomaly_flag IS NOT NULL",
     ]
     params: list[str] = [city]
 
@@ -106,18 +119,21 @@ def load_city_data_from_s3(
         where_clauses.append("CAST(time AS DATE) <= CAST(? AS DATE)")
         params.append(end_date)
 
+    # GROUP BY deduplicates overlapping parquet files (multiple ingestion batches
+    # can cover the same date range). MAX on anomaly flag: any injection wins.
     query = f"""
         SELECT
             time,
             city_id,
-            {", ".join(FEATURE_COLUMNS)},
-            CAST(COALESCE(synthetic_anomaly_flag, FALSE) AS INTEGER) AS y_true
+            {", ".join(f"MAX({c}) AS {c}" for c in FEATURE_COLUMNS)},
+            CAST(MAX(COALESCE(CAST(synthetic_anomaly_flag AS INTEGER), 0)) AS INTEGER) AS y_true
         FROM read_parquet(
             's3://{bucket}/raw/city={city}/hourly_*.parquet',
             hive_partitioning=true,
             union_by_name=true
         )
         WHERE {' AND '.join(where_clauses)}
+        GROUP BY time, city_id
         ORDER BY time
     """
 

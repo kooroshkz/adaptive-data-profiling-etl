@@ -377,7 +377,8 @@ export default function Home() {
         </header>
 
         <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm backdrop-blur md:p-6">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="flex items-end justify-between gap-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 flex-1 min-w-0">
             <label className="control">
               <span>Dataset</span>
               <select value={sourceMode} onChange={(e) => setSourceMode(e.target.value as SourceMode)}>
@@ -424,6 +425,13 @@ export default function Home() {
               </select>
             </label>
 
+          </div>
+            <a
+              href="/experiments"
+              className="shrink-0 self-end rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-medium text-indigo-800 hover:bg-indigo-100 whitespace-nowrap"
+            >
+              Experiment Mode →
+            </a>
           </div>
         </section>
 
