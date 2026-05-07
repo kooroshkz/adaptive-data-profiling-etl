@@ -15,6 +15,20 @@ DATASET_PATHS = {
     "raw_hourly": "raw/city=*/hourly_*.parquet",
 }
 
+# Numeric columns available in the hourly parquet schema
+_NUMERIC_COLS = {
+    "temperature_2m", "apparent_temperature", "precipitation",
+    "surface_pressure", "soil_temperature_7_to_28cm", "soil_moisture_7_to_28cm",
+    "relative_humidity_2m", "dew_point_2m", "rain", "snowfall", "snow_depth",
+    "weather_code", "pressure_msl", "cloud_cover", "cloud_cover_low",
+    "cloud_cover_mid", "cloud_cover_high", "et0_fao_evapotranspiration",
+    "vapour_pressure_deficit", "wind_speed_10m", "wind_speed_100m",
+    "wind_direction_10m", "wind_direction_100m", "wind_gusts_10m",
+    "soil_temperature_0_to_7cm", "soil_temperature_28_to_100cm",
+    "soil_temperature_100_to_255cm", "soil_moisture_0_to_7cm",
+    "soil_moisture_28_to_100cm", "soil_moisture_100_to_255cm",
+}
+
 
 def _sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
@@ -55,6 +69,82 @@ def _connect() -> duckdb.DuckDBPyConnection:
         con.execute(f"SET s3_secret_access_key = {_sql_literal(aws_secret_access_key)}")
 
     return con
+
+
+def _local_raw_parquet_glob() -> str:
+    """Absolute glob path for all hourly parquets in the local mirror."""
+    repo_root = Path(__file__).resolve().parents[2]
+    return str(repo_root / "airflow" / "data" / "raw" / "city=*" / "hourly_*.parquet")
+
+
+def _local_daily_scatter(dataset: str, city: str, y_col: str, limit: int) -> dict[str, Any]:
+    """Compute daily aggregates from local parquets without MotherDuck."""
+    if y_col not in _NUMERIC_COLS:
+        raise ValueError(f"Column not supported for local daily aggregation: {y_col}")
+
+    glob = _local_raw_parquet_glob()
+    city_filter = f"AND city_id = '{city}'" if city else ""
+    include_anomalies = dataset == "daily_with_anomalies"
+
+    anomaly_filter = "" if include_anomalies else (
+        "AND (synthetic_anomaly_flag IS NULL OR NOT synthetic_anomaly_flag)"
+    )
+
+    limit_clause = f"LIMIT {int(limit)}" if limit and int(limit) > 0 else ""
+
+    sql = f"""
+        SELECT
+            DATE_TRUNC('day', time)                                              AS day_ts,
+            city_id,
+            epoch(DATE_TRUNC('day', time)) * 1000.0                             AS x_value,
+            AVG({y_col})                                                         AS y_value,
+            COALESCE(BOOL_OR(synthetic_anomaly_flag), FALSE)                    AS has_anomaly,
+            COUNT(*) FILTER (WHERE synthetic_anomaly_flag)                       AS anomaly_hours
+        FROM read_parquet({repr(glob)}, union_by_name=true, hive_partitioning=true)
+        WHERE time IS NOT NULL
+          AND {y_col} IS NOT NULL
+          {anomaly_filter}
+          {city_filter}
+        GROUP BY DATE_TRUNC('day', time), city_id
+        ORDER BY day_ts DESC
+        {limit_clause}
+    """
+
+    con = duckdb.connect(":memory:")
+    rows = con.execute(sql).fetchall()
+
+    points = []
+    anomaly_count = 0
+    for row in rows:
+        day_ts, city_id, x_value, y_value, has_anomaly, anom_hours = row
+        is_anomaly = bool(has_anomaly) and include_anomalies
+        if is_anomaly:
+            anomaly_count += 1
+        points.append({
+            "time": _serialize_value(day_ts),
+            "cityId": city_id,
+            "x": float(x_value),
+            "y": float(y_value) if y_value is not None else 0.0,
+            "isAnomaly": is_anomaly,
+            "isSyntheticAny": bool(has_anomaly),
+            "shiftPct": None,
+            "actualValue": None,
+            "targetColumn": None,
+            "anomalyHours": int(anom_hours) if anom_hours else 0,
+        })
+
+    return {
+        "dataset": dataset,
+        "city": city,
+        "xColumn": "time",
+        "yColumn": y_col,
+        "rowCount": len(points),
+        "anomalyCount": anomaly_count,
+        "totalSyntheticCount": sum(1 for p in points if p["isSyntheticAny"]),
+        "anomalyRate": (anomaly_count / len(points)) if points else 0,
+        "avgShiftPct": None,
+        "points": points,
+    }
 
 
 def _connect_motherduck() -> duckdb.DuckDBPyConnection:
@@ -161,7 +251,12 @@ def get_metadata(dataset: str) -> dict[str, Any]:
 
 def get_scatter_data(dataset: str, city: str, y_col: str, limit: int) -> dict[str, Any]:
     is_daily_dataset = dataset in DAILY_DATASETS
-    con = _connect_motherduck() if is_daily_dataset else _connect()
+
+    # Daily aggregates are always computed from local parquets (ground truth)
+    if is_daily_dataset:
+        return _local_daily_scatter(dataset, city, y_col, limit)
+
+    con = _connect()
     source_sql = _dataset_sql(dataset, city)
 
     metadata = get_metadata(dataset)

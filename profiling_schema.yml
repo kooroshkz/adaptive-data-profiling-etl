@@ -1,0 +1,82 @@
+version: 1
+
+# ---------------------------------------------------------------------------
+# Model store — where trained artifacts are persisted.
+# Each model is stored at:
+#   s3: {prefix}/partition={partition_key}/col={column}/latest.pkl
+#   local: {local_dir}/partition={partition_key}/col={column}/latest.pkl
+# ---------------------------------------------------------------------------
+model_store:
+  backend: s3                           # s3 | local
+  bucket: weather-data-koorosh-thesis   # required when backend=s3
+  prefix: models/v1
+  # local_dir: ./models                 # required when backend=local
+
+# ---------------------------------------------------------------------------
+# AutoML hyperparameter optimisation settings.
+# Optuna selects the best PyOD model and parameters by maximising F2 on a
+# held-out validation split (uses synthetic anomaly labels when available,
+# falls back to score-variance proxy when labels are absent).
+# ---------------------------------------------------------------------------
+training:
+  n_trials: 30        # Optuna trials per column
+  seed: 42
+  min_train_rows: 100 # skip training if fewer non-null rows exist
+
+# ---------------------------------------------------------------------------
+# Column definitions.
+# Each column declares:
+#   automl: whether to train and apply an anomaly detection model
+#   checks:  rule-based quality constraints evaluated at score time
+#     type:     expected Python type (float | int | str)
+#     range:    [min, max] inclusive — values outside are flagged
+#     not_null: flag null / NaN values
+# ---------------------------------------------------------------------------
+columns:
+  - name: temperature_2m
+    description: Air temperature at 2 m height (°C)
+    automl: true
+    checks:
+      type: float
+      range: [-80, 60]
+      not_null: true
+
+  - name: apparent_temperature
+    description: Feels-like temperature combining heat, humidity, and wind (°C)
+    automl: true
+    checks:
+      type: float
+      range: [-80, 60]
+      not_null: true
+
+  - name: precipitation
+    description: Total precipitation (mm)
+    automl: true
+    checks:
+      type: float
+      range: [0, 500]
+      not_null: true
+
+  - name: surface_pressure
+    description: Atmospheric pressure at ground level (hPa)
+    automl: true
+    checks:
+      type: float
+      range: [800, 1100]
+      not_null: true
+
+  - name: soil_temperature_7_to_28cm
+    description: Soil temperature at 7–28 cm depth (°C)
+    automl: true
+    checks:
+      type: float
+      range: [-30, 50]
+      not_null: true
+
+  - name: soil_moisture_7_to_28cm
+    description: Volumetric soil moisture at 7–28 cm depth (m³/m³)
+    automl: true
+    checks:
+      type: float
+      range: [0.0, 1.0]
+      not_null: true

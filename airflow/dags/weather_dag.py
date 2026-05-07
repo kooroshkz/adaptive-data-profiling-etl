@@ -97,6 +97,23 @@ for idx, city in enumerate(CITIES):
 
 # Note: Upload to S3 happens automatically during ingestion (no separate task needed)
 
+# Anomaly detection tasks — run after each city's ingestion.
+# Loads trained models from S3 (s3://bucket/models/v1/city=<city>/col=<col>/latest.pkl)
+# and scores today's data. Skips gracefully if no model has been trained yet.
+anomaly_detection_tasks = []
+for idx, city in enumerate(CITIES):
+    detect_task = BashOperator(
+        task_id=f"detect_anomalies_{city}",
+        bash_command=f"""
+        set -e
+        cd /opt/airflow/scripts
+        RUN_DATE="{{{{ ds }}}}"
+        python automl_predict.py --city {city} --date "$RUN_DATE"
+        """,
+        dag=dag,
+    )
+    anomaly_detection_tasks.append(detect_task)
+
 # Trigger GitHub Actions for dbt transformations and wait for completion
 def trigger_dbt():
     """Trigger dbt transformation workflow in GitHub Actions and wait for completion"""
@@ -158,5 +175,9 @@ notify_failure = PythonOperator(
 )
 
 # Define task dependencies
-install_deps >> select_anomaly_cities >> ingestion_tasks >> trigger_dbt_transform >> log_completion
+# ingest → detect → dbt → log
+install_deps >> select_anomaly_cities >> ingestion_tasks
+for ingest_task, detect_task in zip(ingestion_tasks, anomaly_detection_tasks):
+    ingest_task >> detect_task
+anomaly_detection_tasks >> trigger_dbt_transform >> log_completion
 [log_completion, install_deps, select_anomaly_cities, trigger_dbt_transform] >> notify_failure

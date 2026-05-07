@@ -526,9 +526,14 @@ export default function ExperimentsPage() {
                 </span>
               </p>
             </div>
-            <a href="/" className="shrink-0 rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20">
-              ← Dashboard
-            </a>
+            <div className="flex shrink-0 flex-col gap-2">
+              <a href="/" className="rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-center text-sm font-medium text-white hover:bg-white/20">
+                ← Observatory
+              </a>
+              <a href="/dashboard" className="rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-center text-sm font-medium text-white hover:bg-white/20">
+                Pipeline →
+              </a>
+            </div>
           </div>
         </header>
 

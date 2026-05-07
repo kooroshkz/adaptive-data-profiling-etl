@@ -426,12 +426,20 @@ export default function Home() {
             </label>
 
           </div>
-            <a
-              href="/experiments"
-              className="shrink-0 self-end rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-medium text-indigo-800 hover:bg-indigo-100 whitespace-nowrap"
-            >
-              Experiment Mode →
-            </a>
+            <div className="flex shrink-0 self-end gap-2">
+              <a
+                href="/experiments"
+                className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-medium text-indigo-800 hover:bg-indigo-100 whitespace-nowrap"
+              >
+                Experiments →
+              </a>
+              <a
+                href="/dashboard"
+                className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100 whitespace-nowrap"
+              >
+                Pipeline →
+              </a>
+            </div>
           </div>
         </section>
 
