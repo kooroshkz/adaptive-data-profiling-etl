@@ -43,6 +43,7 @@ weather_dbt/logs/
 
 # AutoML experiments
 experiments/automl/artifacts/
+Non_Linear_Experiment/artifacts/
 experiments/data/automl/
 mlruns/
 
