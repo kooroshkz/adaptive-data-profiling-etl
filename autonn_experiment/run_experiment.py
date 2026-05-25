@@ -17,8 +17,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--cities", nargs="+", default=DEFAULT_CITIES)
     parser.add_argument("--scope", choices=["multivariate", "univariate", "both"], default="both")
-    parser.add_argument("--n-trials", type=int, default=15,
-                        help="Optuna trials per (city, column). Default 15 keeps total runtime reasonable.")
+    parser.add_argument("--n-trials", type=int, default=25,
+                        help="Optuna trials per (city, column). Matches AutoML trial budget for a fair comparison.")
     parser.add_argument("--start-date", default=None)
     parser.add_argument("--end-date", default=None)
     parser.add_argument("--seed", type=int, default=42)

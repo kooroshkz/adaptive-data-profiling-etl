@@ -129,24 +129,15 @@ def optimize_scope(
     best_model_name = study.best_trial.params["model"]
     best_params = {k: v for k, v in study.best_trial.params.items() if k != "model"}
 
-    # Reconstruct hidden_dims from Optuna params
-    if best_model_name in ("AE", "VAE"):
-        n_layers = best_params.get("n_layers", 1)
-        layer_width = best_params.get("layer_width", max(4, input_dim * 4))
-        hidden_dims = []
-        w = layer_width
-        for _ in range(n_layers):
-            hidden_dims.append(max(2, w))
-            w = max(2, w // 2)
-        best_params["hidden_dims"] = hidden_dims
-
-    # Reconstruct gamma
-    if best_model_name == "OCSVM":
-        gamma_mode = best_params.get("gamma_mode", "scale")
-        if gamma_mode == "float":
-            best_params["gamma"] = best_params.get("gamma_val", 1.0)
-        else:
-            best_params["gamma"] = gamma_mode
+    # Reconstruct hidden_dims from Optuna params (AE and VAE both use this)
+    n_layers = best_params.get("n_layers", 1)
+    layer_width = best_params.get("layer_width", max(4, input_dim * 4))
+    hidden_dims = []
+    w = layer_width
+    for _ in range(n_layers):
+        hidden_dims.append(max(2, w))
+        w = max(2, w // 2)
+    best_params["hidden_dims"] = hidden_dims
 
     # Refit on full data, time both train and inference
     X_all_p, _ = preprocess(X, X)

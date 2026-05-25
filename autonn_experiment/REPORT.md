@@ -3,22 +3,22 @@
 This report evaluates two Optuna-driven automated anomaly detection approaches on the same unsupervised task: detecting synthetically injected anomalies in weather ETL data across five cities without the model ever seeing the anomaly labels during training.
 
 - **AutoML**: Optuna selects among five PyOD classical algorithms — IForest, LOF, ECOD, HBOS, COPOD — and their hyperparameters (25 trials per column).
-- **Auto-NN**: Optuna performs Neural Architecture Search (NAS) over Autoencoder (AE), Variational Autoencoder (VAE), and One-Class SVM (OCSVM) — their architecture, learning rate, epoch count, activation, and batch size (15 trials per column).
+- **Auto-NN**: Optuna performs Neural Architecture Search (NAS) purely over neural network models — Autoencoder (AE) and Variational Autoencoder (VAE) — varying hidden layer count, width, activation, learning rate, epoch count, and batch size (25 trials per column, matching AutoML for a fair comparison).
 
-Both approaches share identical data, preprocessing, train/validation split (70/30), evaluation metric (F2, β=2), and the principle of fitting without any anomaly labels.
+Both approaches share identical data, preprocessing, train/validation split (70/30), evaluation metric (F2, β=2), trial budget (25), and the principle of fitting without any anomaly labels.
 
 ## Executive Summary
 
 | Metric | AutoML | Auto-NN | AutoML advantage |
 |--------|--------|---------|-----------------|
-| Mean F2 (univariate) | **0.683** | 0.162 | +0.521 |
-| Mean Recall (univariate) | **0.765** | 0.220 | +0.545 |
-| Mean Precision (univariate) | **0.618** | 0.205 | +0.413 |
-| Total experiment time | **145 s** | 354 s | AutoML 2.4× faster |
-| F2 per second (efficiency) | **0.1652** | 0.0160 | 10.3× better |
-| Univariate wins | **28/30** (93%) | 0/30 (0%) | — |
+| Mean F2 (univariate) | **0.683** | 0.167 | +0.517 |
+| Mean Recall (univariate) | **0.765** | 0.196 | +0.569 |
+| Mean Precision (univariate) | **0.618** | 0.153 | +0.465 |
+| Total experiment time | **145 s** | 988 s | AutoML 6.8× faster |
+| F2 per second (efficiency) | **0.1652** | 0.0059 | 28.0× better |
+| Univariate wins | **27/30** (93%) | 0/30 (0%) | — |
 
-**AutoML is the clear winner.** Across 30 city×column pairs, AutoML wins 28 (93%), Auto-NN wins 0 (0%), and 2 are roughly tied. AutoML achieves this with fewer or equal compute resources.
+**AutoML is the clear winner.** Across 30 city×column pairs, AutoML wins 27 (90%), Auto-NN wins 0 (0%), and 3 are roughly tied. AutoML achieves this with fewer or equal compute resources.
 
 ## Detection Performance: Full Results
 
@@ -28,59 +28,59 @@ F2-score weights recall twice as heavily as precision (β=2): missing a real ano
 
 | City | Column | AutoML model | AutoML F2 | NN model | NN F2 | Δ F2 | Winner |
 |------|--------|:------------:|:---------:|:--------:|:-----:|:-----:|:------:|
-| amsterdam | apparent_temperature | LOF | 0.418 | OCSVM | 0.014 | -0.404 | **AutoML** |
-| amsterdam | precipitation | LOF | 0.201 | AE | 0.015 | -0.185 | **AutoML** |
-| amsterdam | soil_moisture_7_to_28cm | LOF | 0.928 | OCSVM | 0.160 | -0.768 | **AutoML** |
-| amsterdam | soil_temperature_7_to_28cm | LOF | 0.961 | AE | 0.039 | -0.922 | **AutoML** |
-| amsterdam | surface_pressure | ECOD | 0.928 | VAE | 0.845 | -0.083 | **AutoML** |
-| amsterdam | temperature_2m | LOF | 0.668 | VAE | 0.020 | -0.648 | **AutoML** |
-| london | apparent_temperature | LOF | 0.855 | OCSVM | 0.010 | -0.845 | **AutoML** |
-| london | precipitation | LOF | 0.115 | VAE | 0.006 | -0.108 | **AutoML** |
-| london | soil_moisture_7_to_28cm | LOF | 0.985 | OCSVM | 0.081 | -0.904 | **AutoML** |
-| london | soil_temperature_7_to_28cm | LOF | 0.936 | OCSVM | 0.027 | -0.909 | **AutoML** |
-| london | surface_pressure | ECOD | 0.955 | OCSVM | 0.915 | -0.039 | **AutoML** |
-| london | temperature_2m | LOF | 0.137 | OCSVM | 0.033 | -0.104 | **AutoML** |
-| new_york | apparent_temperature | LOF | 0.768 | OCSVM | 0.010 | -0.758 | **AutoML** |
-| new_york | precipitation | LOF | 0.154 | VAE | 0.015 | -0.139 | **AutoML** |
-| new_york | soil_moisture_7_to_28cm | LOF | 0.997 | AE | 0.032 | -0.965 | **AutoML** |
-| new_york | soil_temperature_7_to_28cm | LOF | 0.787 | VAE | 0.000 | -0.787 | **AutoML** |
-| new_york | surface_pressure | ECOD | 0.934 | VAE | 0.507 | -0.427 | **AutoML** |
-| new_york | temperature_2m | LOF | 0.792 | OCSVM | 0.022 | -0.770 | **AutoML** |
-| paris | apparent_temperature | LOF | 0.833 | VAE | 0.016 | -0.817 | **AutoML** |
-| paris | precipitation | LOF | 0.157 | AE | 0.017 | -0.140 | **AutoML** |
-| paris | soil_moisture_7_to_28cm | LOF | 0.949 | OCSVM | 0.048 | -0.901 | **AutoML** |
-| paris | soil_temperature_7_to_28cm | LOF | 0.941 | VAE | 0.016 | -0.924 | **AutoML** |
-| paris | surface_pressure | HBOS | 0.944 | OCSVM | 0.871 | -0.073 | **AutoML** |
-| paris | temperature_2m | LOF | 0.259 | AE | 0.014 | -0.244 | **AutoML** |
-| tokyo | apparent_temperature | LOF | 0.898 | AE | 0.012 | -0.886 | **AutoML** |
-| tokyo | precipitation | LOF | 0.130 | AE | 0.019 | -0.110 | **AutoML** |
-| tokyo | soil_moisture_7_to_28cm | LOF | 0.973 | VAE | 0.032 | -0.941 | **AutoML** |
-| tokyo | soil_temperature_7_to_28cm | LOF | 0.887 | AE | 0.073 | -0.814 | **AutoML** |
-| tokyo | surface_pressure | ECOD | 0.968 | OCSVM | 0.960 | -0.009 | tie |
-| tokyo | temperature_2m | COPOD | 0.038 | AE | 0.035 | -0.003 | tie |
+| amsterdam | apparent_temperature | LOF | 0.418 | AE | 0.006 | -0.412 | **AutoML** |
+| amsterdam | precipitation | LOF | 0.201 | VAE | 0.000 | -0.201 | **AutoML** |
+| amsterdam | soil_moisture_7_to_28cm | LOF | 0.928 | VAE | 0.174 | -0.754 | **AutoML** |
+| amsterdam | soil_temperature_7_to_28cm | LOF | 0.961 | AE | 0.044 | -0.917 | **AutoML** |
+| amsterdam | surface_pressure | ECOD | 0.928 | VAE | 0.882 | -0.045 | **AutoML** |
+| amsterdam | temperature_2m | LOF | 0.668 | VAE | 0.027 | -0.641 | **AutoML** |
+| london | apparent_temperature | LOF | 0.855 | VAE | 0.024 | -0.831 | **AutoML** |
+| london | precipitation | LOF | 0.115 | VAE | 0.014 | -0.100 | **AutoML** |
+| london | soil_moisture_7_to_28cm | LOF | 0.985 | AE | 0.044 | -0.941 | **AutoML** |
+| london | soil_temperature_7_to_28cm | LOF | 0.936 | AE | 0.021 | -0.915 | **AutoML** |
+| london | surface_pressure | ECOD | 0.955 | VAE | 0.935 | -0.019 | tie |
+| london | temperature_2m | LOF | 0.137 | AE | 0.010 | -0.127 | **AutoML** |
+| new_york | apparent_temperature | LOF | 0.768 | VAE | 0.000 | -0.768 | **AutoML** |
+| new_york | precipitation | LOF | 0.154 | VAE | 0.016 | -0.139 | **AutoML** |
+| new_york | soil_moisture_7_to_28cm | LOF | 0.997 | AE | 0.029 | -0.968 | **AutoML** |
+| new_york | soil_temperature_7_to_28cm | LOF | 0.787 | AE | 0.043 | -0.744 | **AutoML** |
+| new_york | surface_pressure | ECOD | 0.934 | AE | 0.942 | +0.008 | tie |
+| new_york | temperature_2m | LOF | 0.792 | AE | 0.022 | -0.770 | **AutoML** |
+| paris | apparent_temperature | LOF | 0.833 | AE | 0.012 | -0.821 | **AutoML** |
+| paris | precipitation | LOF | 0.157 | VAE | 0.022 | -0.135 | **AutoML** |
+| paris | soil_moisture_7_to_28cm | LOF | 0.949 | VAE | 0.030 | -0.919 | **AutoML** |
+| paris | soil_temperature_7_to_28cm | LOF | 0.941 | VAE | 0.041 | -0.900 | **AutoML** |
+| paris | surface_pressure | HBOS | 0.944 | AE | 0.676 | -0.268 | **AutoML** |
+| paris | temperature_2m | LOF | 0.259 | AE | 0.012 | -0.246 | **AutoML** |
+| tokyo | apparent_temperature | LOF | 0.898 | AE | 0.024 | -0.874 | **AutoML** |
+| tokyo | precipitation | LOF | 0.130 | AE | 0.013 | -0.117 | **AutoML** |
+| tokyo | soil_moisture_7_to_28cm | LOF | 0.973 | AE | 0.042 | -0.931 | **AutoML** |
+| tokyo | soil_temperature_7_to_28cm | LOF | 0.887 | VAE | 0.076 | -0.811 | **AutoML** |
+| tokyo | surface_pressure | ECOD | 0.968 | VAE | 0.789 | -0.180 | **AutoML** |
+| tokyo | temperature_2m | COPOD | 0.038 | AE | 0.027 | -0.011 | tie |
 
 ### Multivariate Detection — F2 Score
 
 | City | AutoML model | AutoML F2 | NN model | NN F2 | Δ F2 | Winner |
 |------|:------------:|:---------:|:--------:|:-----:|:-----:|:------:|
-| amsterdam | LOF | 0.246 | OCSVM | 0.267 | +0.020 | **NN** |
-| london | LOF | 0.295 | OCSVM | 0.286 | -0.009 | tie |
-| new_york | LOF | 0.403 | OCSVM | 0.292 | -0.111 | **AutoML** |
-| paris | LOF | 0.378 | AE | 0.323 | -0.055 | **AutoML** |
-| tokyo | LOF | 0.314 | OCSVM | 0.283 | -0.031 | **AutoML** |
+| amsterdam | LOF | 0.246 | AE | 0.223 | -0.023 | **AutoML** |
+| london | LOF | 0.295 | AE | 0.364 | +0.068 | **NN** |
+| new_york | LOF | 0.403 | AE | 0.298 | -0.104 | **AutoML** |
+| paris | LOF | 0.378 | AE | 0.211 | -0.167 | **AutoML** |
+| tokyo | LOF | 0.314 | AE | 0.267 | -0.047 | **AutoML** |
 
 ### Aggregate Detection Metrics
 
 | Scope | Metric | AutoML | Auto-NN | Δ (NN − AutoML) |
 |-------|--------|:------:|:-------:|:---------------:|
-| Univariate | Mean F2 | **0.683** | 0.162 | -0.521 |
-| Univariate | Mean Recall | **0.765** | 0.220 | -0.545 |
-| Univariate | Mean Precision | **0.618** | 0.205 | -0.413 |
-| Univariate | Mean F1 | **0.632** | 0.145 | -0.487 |
-| Multivariate | Mean F2 | **0.327** | 0.290 | -0.037 |
-| Multivariate | Mean Recall | **0.294** | 0.270 | -0.024 |
-| Multivariate | Mean Precision | **0.628** | 0.428 | -0.200 |
-| Multivariate | Mean F1 | **0.397** | 0.328 | -0.069 |
+| Univariate | Mean F2 | **0.683** | 0.167 | -0.517 |
+| Univariate | Mean Recall | **0.765** | 0.196 | -0.569 |
+| Univariate | Mean Precision | **0.618** | 0.153 | -0.465 |
+| Univariate | Mean F1 | **0.632** | 0.155 | -0.477 |
+| Multivariate | Mean F2 | **0.327** | 0.272 | -0.055 |
+| Multivariate | Mean Recall | **0.294** | 0.277 | -0.017 |
+| Multivariate | Mean Precision | **0.628** | 0.304 | -0.324 |
+| Multivariate | Mean F1 | **0.397** | 0.275 | -0.121 |
 
 ### Detection by Column Type
 
@@ -88,12 +88,12 @@ Columns grouped by distributional character show a clear pattern:
 
 | Column | Distribution | AutoML avg F2 | Auto-NN avg F2 | AutoML advantage | Why |
 |--------|:------------:|:-------------:|:--------------:|:----------------:|-----|
-| `surface_pressure` | Tight near-Gaussian | **0.946** | 0.820 | +0.126 | Most stable, narrow range — tail detectors excel |
-| `soil_moisture_7_to_28cm` | Slow seasonal cycle | **0.966** | 0.071 | +0.896 | Clear density gradient, LOF finds local outliers |
-| `soil_temperature_7_to_28cm` | Seasonal, moderate noise | **0.902** | 0.031 | +0.871 | Seasonal clusters give LOF strong local context |
-| `apparent_temperature` | Seasonal + noisy | **0.754** | 0.012 | +0.742 | LOF adapts to local summer/winter density |
-| `temperature_2m` | Highly seasonal + erratic | **0.379** | 0.025 | +0.354 | Noise blurs AE reconstruction; LOF stays local |
-| `precipitation` | Heavily right-skewed, sparse | **0.151** | 0.015 | +0.137 | Hardest for both — most hours have zero rain |
+| `surface_pressure` | Tight near-Gaussian | **0.946** | 0.845 | +0.101 | Most stable, narrow range — tail detectors excel |
+| `soil_moisture_7_to_28cm` | Slow seasonal cycle | **0.966** | 0.064 | +0.903 | Clear density gradient, LOF finds local outliers |
+| `soil_temperature_7_to_28cm` | Seasonal, moderate noise | **0.902** | 0.045 | +0.857 | Seasonal clusters give LOF strong local context |
+| `apparent_temperature` | Seasonal + noisy | **0.754** | 0.013 | +0.741 | LOF adapts to local summer/winter density |
+| `temperature_2m` | Highly seasonal + erratic | **0.379** | 0.020 | +0.359 | Noise blurs AE reconstruction; LOF stays local |
+| `precipitation` | Heavily right-skewed, sparse | **0.151** | 0.013 | +0.138 | Hardest for both — most hours have zero rain |
 
 ## Why AutoML (PyOD) Wins: Root-Cause Analysis
 
@@ -124,9 +124,9 @@ Autoencoders are powerful for high-dimensional data (images, text, audio) where 
 - **Epoch count drives instability**: With 20–100 epochs searched over 15 trials, many architectures either overfit (zero reconstruction error everywhere) or underfit (constant-output decoder). Both fail to set a useful threshold.
 - **Evidence from the results**: Across all 5 cities, AE/VAE achieves near-zero F2 on soil moisture, soil temperature, and apparent temperature — all columns where LOF gets F2 > 0.85. The issue is structural, not a matter of more compute.
 
-### 4. Why OCSVM's Sub-Sampling Hurts
+### 4. Why More Trials Don't Close the Gap
 
-OCSVM with RBF kernel is O(n²) at training time, so this experiment caps training to 3,000 rows. On a 20,856-row dataset this means the model sees only **14%** of the data. Rare seasonal events that only appear a few times per year may not be represented in the random sub-sample, making the learned boundary inaccurate. Surface pressure is the exception: it has a single tight mode, so 3,000 samples characterise it well. All other columns exhibit seasonal multi-modality that 3,000 random samples mis-represent.
+Even with 25 trials (matching AutoML), AE and VAE do not converge to competitive thresholds on low-dimensional tabular data within a typical Optuna budget. The core issue is that the search space interaction between epochs, width, and contamination is large relative to the information content of 1-D input. Optuna's TPE sampler needs many evaluations to locate regions of the architecture space where reconstruction error is well-calibrated as an anomaly score — a property that density- and distance-based models achieve analytically.
 
 ## Computational Cost: Measured Data
 
@@ -143,26 +143,24 @@ This table shows how long *one training trial* takes for each algorithm. Multipl
 | HBOS | PyOD classical | 0.0135 | 0.0012 | 0.338 |
 | LOF | PyOD classical | 0.3111 | 0.0494 | 7.777 |
 | IForest | PyOD classical | 0.3721 | 0.3954 | 9.303 |
-| AE | PyTorch NN | ~0.10–1.5 (varies) | — | ~2–22 per trial |
-| VAE | PyTorch NN | ~0.30–4.0 (varies) | — | ~5–60 per trial |
-| OCSVM | SVM (3k sub-sample) | ~0.01–0.05 | — | ~0.2–0.8 |
+| AE | PyTorch NN | ~0.10–1.5 (varies) | — | ~2.5–37 per trial |
+| VAE | PyTorch NN | ~0.30–4.0 (varies) | — | ~7.5–100 per trial |
 
 ### Full Experiment Wall-Clock Time
 
 | Experiment | # Models | # Trials/model | Total time | Mean per model | Source |
 |------------|:--------:|:--------------:|:----------:|:--------------:|--------|
 | AutoML (PyOD+Optuna) | 35 | 25 | **144.7 s** | 4.14 s | MLflow run metadata |
-| Auto-NN (AE/VAE/OCSVM) | 35 | 15 | 354.5 s | 10.13 s | `time.perf_counter()` |
+| Auto-NN (AE/VAE) | 35 | 25 | 988.4 s | 28.24 s | `time.perf_counter()` |
 
-**Auto-NN is 2.4× slower** than AutoML wall-to-wall, despite using fewer trials (15 vs 25). The reason: each NN trial trains a neural network for 20–100 epochs (measured: 0.63 s/trial average), while the dominant AutoML algorithm LOF takes 0.31 s/trial and ECOD/HBOS/COPOD take < 0.014 s/trial. With 35 models × 15 trials = 525 NN trials at ~0.63 s each = 331 s search total, versus 35 × 25 trials, with LOF in ~60% of trials at 0.31 s and fast models in 40%: ≈ 35 × 25 × 0.19 = 166 s search, matching the 145 s MLflow measure.
+**Auto-NN is 6.8× slower** than AutoML wall-to-wall, using the same 25 trials. The reason: each NN trial trains a neural network for 20–100 epochs (averaging ~0.6–1.5 s/trial), while the dominant AutoML algorithm LOF takes 0.31 s/trial and ECOD/HBOS/COPOD take < 0.014 s/trial. With 35 models × 25 NN trials at ~1 s each = ~875 s search total, versus 35 × 25 AutoML trials at ~0.19 s average: ≈ 166 s search, matching the 145 s MLflow measure.
 
 ### Per-Model Timing: Auto-NN by Algorithm Type
 
 | NN Model | Count selected | Mean search (s) | Mean refit (s) | Mean total (s) | Mean F2 | F2/s efficiency |
 |----------|:--------------:|:---------------:|:--------------:|:--------------:|:-------:|:---------------:|
-| AE | 10 | 10.21 | 0.92 | 11.13 | 0.058 | 0.0052 |
-| OCSVM | 16 | 8.15 | 0.06 | 8.21 | 0.267 | 0.0326 |
-| VAE | 9 | 10.89 | 1.53 | 12.42 | 0.162 | 0.0130 |
+| AE | 21 | 26.87 | 1.38 | 28.25 | 0.159 | 0.0056 |
+| VAE | 14 | 26.47 | 1.76 | 28.22 | 0.216 | 0.0077 |
 
 ### Detection Efficiency: F2 per Second of Training
 
@@ -170,8 +168,8 @@ This metric answers: *how much detection quality do you get per unit of compute?
 
 | Approach | Mean F2 | Mean time/model (s) | F2/s | Relative efficiency |
 |----------|:-------:|:-------------------:|:----:|:-------------------:|
-| **AutoML** | **0.683** | **4.14** | **0.1652** | **10.3× better** |
-| Auto-NN | 0.162 | 10.13 | 0.0160 | 1× (baseline) |
+| **AutoML** | **0.683** | **4.14** | **0.1652** | **28.0× better** |
+| Auto-NN | 0.167 | 28.24 | 0.0059 | 1× (baseline) |
 
 ### MLflow Run History (All AutoML Batch Experiments)
 
@@ -224,11 +222,10 @@ LOF is O(n²) in the worst case (all n neighbours searched), which is why the th
 
 | Model | Selected | % | Observation |
 |-------|:--------:|:-:|-------------|
-| OCSVM | 16 | 46% | Fast (sub-sampled) — Optuna prefers it when NNs fail to find good F2 in budget |
-| AE | 10 | 29% | Selected on noisy/precipitation columns where any model struggles |
-| VAE | 9 | 26% | Selected on surface_pressure (works) and some noisy columns (does not work) |
+| AE | 21 | 60% | Reconstruction-based — selected when VAE latent regularisation hurts convergence |
+| VAE | 14 | 40% | ELBO-trained with KL regularisation — selected on columns with tight distributions |
 
-**Interpretation**: OCSVM dominates (46%) because in a 15-trial budget where AE/VAE need many epochs to converge, OCSVM's sub-sampled training is fast enough for Optuna to try more configurations. This shows that NN architectures require a larger trial budget than 15 to consistently outperform simpler models in Optuna search.
+With a pure neural-network search space and a matching 25-trial budget, both AE and VAE are explored equally by Optuna's TPE sampler. The selection split reflects which architecture achieves higher F2 on the validation fold for each (city, column) pair.
 
 ## When Would Auto-NN Have an Advantage?
 
@@ -244,18 +241,18 @@ The current results are decisive for this specific task. However, Auto-NN would 
 
 ## Conclusion
 
-For this weather ETL anomaly detection task (20k hourly rows, 6 tabular features, 0.36% point anomaly rate, unsupervised), **AutoML with classical PyOD algorithms outperforms Auto-NN on every measured axis**:
+For this weather ETL anomaly detection task (20k hourly rows, 6 tabular features, 0.36% point anomaly rate, unsupervised, equal 25-trial budget), **AutoML with classical PyOD algorithms outperforms Auto-NN (pure AE/VAE) on every measured axis**:
 
 | Axis | AutoML result | Auto-NN result |
 |------|:-------------:|:--------------:|
-| Detection quality (mean F2) | **0.683** | 0.162 |
-| Recall | **0.765** | 0.220 |
-| Total experiment time | **145 s** | 354 s |
-| F2 per second | **0.1652** | 0.0160 |
+| Detection quality (mean F2) | **0.683** | 0.167 |
+| Recall | **0.765** | 0.196 |
+| Total experiment time | **145 s** | 988 s |
+| F2 per second | **0.1652** | 0.0059 |
 | Rule-based baseline | 0.000 | 0.000 |
 
 The result is not surprising in retrospect. LOF and ECOD are algorithms built specifically for tabular, low-dimensional anomaly detection. LOF's local density comparison is semantically aligned with the nature of weather anomalies — a point is anomalous if it is sparse *relative to its season*, not globally. ECOD's tail probability is the theoretically correct score for detecting outliers in a near-Gaussian distribution.
 
-Auto-NN, in contrast, applies a general-purpose function approximator to a problem that does not require it. A 1D autoencoder has no meaningful bottleneck, a VAE trained for 20–100 epochs on 20k points does not converge to a stable distribution model in a 15-trial budget, and OCSVM loses accuracy from sub-sampling.
+Auto-NN (AE and VAE), in contrast, applies general-purpose function approximators to a problem that does not require them. A 1D autoencoder has no meaningful bottleneck — even shallow architectures can memorise 20k training points, so reconstruction error does not reliably separate anomalies from normal values in low-density seasonal regions. Increasing the trial budget to match AutoML (25 trials) does not close the gap because the underlying limitation is structural, not a matter of search time.
 
 **Both approaches far exceed rule-based checks**, which caught 0% of injected anomalies. The practical recommendation: **use AutoML (PyOD + Optuna) as the default for tabular ETL anomaly detection**. Reserve Auto-NN for high-dimensional, semi-supervised, or streaming scenarios where its architectural flexibility provides a genuine advantage.

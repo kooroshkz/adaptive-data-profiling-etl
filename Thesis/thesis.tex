@@ -1,0 +1,1166 @@
+\documentclass[12pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[left=2cm,right=2cm,top=2cm,bottom=3cm]{geometry}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{shapes,backgrounds,calc,arrows,arrows.meta,patterns,matrix,positioning}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{groupplots}
+\usepackage{listings}
+\usepackage{float}
+\usepackage{tabularx}
+\usepackage[setpagesize=false,colorlinks=true,linkcolor=blue,urlcolor=red,
+  pdftitle={Adaptive Data Profiling with ML-Based Quality Checks for ETL Pipeline Quality and Cost Optimization},
+  pdfauthor={Koorosh Komeili Zadeh}]{hyperref}
+\frenchspacing
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{8pt}
+
+% ── Colour palette ───────────────────────────────────────────────────────────
+\definecolor{leidenblue}{RGB}{0,46,104}
+\definecolor{recall}{RGB}{22,163,74}
+\definecolor{precision}{RGB}{37,99,235}
+\definecolor{f1color}{RGB}{234,88,12}
+\definecolor{colorgray}{RGB}{156,163,175}
+\definecolor{codebg}{RGB}{248,250,252}
+\definecolor{codeborder}{RGB}{203,213,225}
+\definecolor{keywordcolor}{RGB}{124,58,237}
+\definecolor{stringcolor}{RGB}{220,38,38}
+\definecolor{commentcolor}{RGB}{107,114,128}
+
+% ── YAML listing style ───────────────────────────────────────────────────────
+\lstdefinelanguage{yaml}{
+  keywords={true,false,null},
+  keywordstyle=\color{keywordcolor}\bfseries,
+  basicstyle=\ttfamily\small,
+  sensitive=false,
+  comment=[l]{\#},
+  commentstyle=\color{commentcolor}\itshape,
+  stringstyle=\color{stringcolor},
+  morestring=[b]',
+  morestring=[b]",
+}
+\lstset{
+  language=yaml,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framerule=0.8pt,
+  rulecolor=\color{codeborder},
+  xleftmargin=12pt,
+  xrightmargin=4pt,
+  framexleftmargin=8pt,
+  aboveskip=10pt,
+  belowskip=4pt,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  numbers=none,
+}
+
+\input{titlepage}
+
+\title{Adaptive Data Profiling with ML-Based Quality Checks for ETL Pipeline Quality and Cost Optimization}
+\author{Koorosh Komeili Zadeh}
+\studentnumber{s3893995}
+\date{\today}
+\supervisor{Joost Visser}
+\secondsupervisor{Jan van Rijn}
+\thesistype{Bachelor Thesis}
+\studyprogram{Data Science and Artificial Intelligence}
+
+\begin{document}
+\hypersetup{pageanchor=false}
+\maketitle
+\hypersetup{pageanchor=true}
+\pagenumbering{roman}
+
+\thispagestyle{empty}
+\begin{abstract}
+\noindent
+Most companies today rely on automated data pipelines to collect, process, and store data for dashboards, machine learning models, and business reports. Data engineers focus on keeping pipelines running. Data quality problems are handled later by analysts or data scientists, and sometimes go undetected entirely.
+
+Traditional quality checks in ETL pipelines are rule-based, such as checks for data types, null values, and value ranges. While these rules can find known problems, they often miss more complex issues like statistical anomalies in source data.
+
+This thesis investigates how AutoML-based adaptive profiling can be integrated into the ingestion layer of an ETL pipeline using open-source tools. A prototype pipeline was built using Apache Airflow, dbt, AWS S3, and DuckDB, extended with a custom Python library that uses PyOD for unsupervised anomaly detection and Optuna for automated hyperparameter optimisation. The pipeline ingests hourly weather data for five cities. Controlled anomalies were injected into the data to provide ground-truth labels for evaluation.
+
+Results show that ML-based profiling detected anomalies that rule-based checks failed to catch in this experiment. The best models achieved recall up to 100\% on stable numerical columns across all five cities, and Optuna's automated search scored higher than a pure neural architecture search baseline  in 29 of 30 evaluated settings while running 6.8$\times$ faster. Training time scales differently per algorithm: IForest scales sub-linearly ($\beta = 0.307$) while LOF scales super-linearly ($\beta = 1.175$), so algorithm choice is the dominant factor in pipeline overhead.
+\end{abstract}
+
+\newpage
+\thispagestyle{empty}
+\tableofcontents
+\thispagestyle{empty}
+\clearpage
+\pagenumbering{arabic}
+
+% ============================================================
+\section{Introduction}\label{sec:introduction}
+% ============================================================
+
+In university, students typically download a static CSV file and run analysis on it. In the real world, data is produced every millisecond. Companies collect it continuously from sensors, APIs, user interactions, and external providers. They rely on it to power dashboards and make business decisions. To keep all this data updated and usable, engineers build automated systems called data pipelines that decide where to collect data, how to process it, and where to store it.
+
+The most common type is the ETL pipeline: Extract, Transform, Load. Data is pulled from a source called upstream, processed and transformed, applies aggregations, and then written to a data warehouse where analysts and downstream users can use it.
+
+The problem is that traditional quality checks inside ETL pipelines are rule-based. A data engineer writes checks like ``temperature must not be null'' or ``pressure must be integer type between 870 and 1085 hPa.'' These rules work well for obvious errors, but they only catch problems the engineer already knew about. Statistical anomalies, gradual sensor drift, or unexpected value distributions will pass through rule checks without triggering any alert \cite{Maddali2021AutomatingDQ, taleb2016dqrules}.
+
+This thesis investigates whether machine learning can fill that gap. Instead of fixed rules, a model learns what normal data looks like from historical data and flags anything that deviates from that learned pattern. The goal is to make this automatic: no manual rule writing, and minimal domain expertise required for individual columns.
+
+\subsection{Motivation and Practical Relevance}
+
+Rule-based quality checks exist, but subtle anomalies still pass through pipelines unnoticed. Quality checks are often applied after data has already been processed, so problems reach analytics and models before anyone spots them.
+
+Recent industry work \cite{databricks2025aietl} shows that AI-driven ETL systems can automatically learn what normal data looks like and detect deviations before they reach downstream systems. Problems get caught earlier, before they propagate.
+
+One main motivation is the idea of ``shift-left'' data quality: validate data as early as possible in the pipeline, ideally at ingestion \cite{datakitchen2023shiftleft}. If a bad record enters at ingestion, every transformation after that inherits the problem. Without early validation, each downstream team finds and fixes the same issue independently.
+
+The other motivation is to reduce the cost of computation for high-quality data delivery by applying outlier detection once, rather than repeatedly by different downstream users. In practice, many data teams skip anomaly detection entirely due to the cost of engineering and human resources required.
+
+\subsection{Research Questions}
+
+The main research question is:
+
+\begin{center}
+\emph{How effective and practical is ML-based anomaly detection for data quality monitoring in ETL pipelines?}
+\end{center}
+
+This is explored through two sub-questions:
+
+\begin{itemize}
+  \item How accurately can ML-based anomaly detection detect data quality issues compared to rule-based checks?
+  \item What is the impact of integrating anomaly detection into the ingestion stage on pipeline performance, resource usage, and operational monitoring?
+\end{itemize}
+
+% ============================================================
+\section{Background}\label{sec:background}
+% ============================================================
+
+\subsection{Data Pipelines in Practice}
+
+A data pipeline is the system that handles this automatically. There are two main types. Real-time pipelines process data as it arrives, suitable for fraud detection or live dashboards. ETL pipelines process data in batches on a schedule, suitable for analytics, reporting, and training machine learning models.
+
+\subsubsection{Business Use of ETL Pipelines}
+
+ETL pipelines are central to how data-driven companies operate. A travel platform such as Skyscanner might collect different types of data that affect flight pricing, for example:
+
+\begin{itemize}
+  \item Data from booking platforms such as Booking.com to identify demand based on hotel reservations.
+  \item Data from airlines such as KLM and Lufthansa to adjust pricing and identify travel seasons.
+  \item Data from weather services to predict when people are more likely to travel to destinations with optimal weather.
+\end{itemize}
+
+This data can be used to adjust prices based on demand, helping the company remain profitable, stay competitive in the market, and offer customer-friendly prices. This process can be automated through data pipelines.
+
+In each case, the pipeline extracts raw data from sources the company does not control, transforms it into a consistent and usable format, and loads it into a warehouse that supports products and business decisions. The quality of everything downstream depends directly on the quality of the data that flows through the pipeline.
+
+\subsubsection{ETL: Extract, Transform, Load}
+
+\textbf{Extract} pulls data from a source: a REST API, a database like PostgreSQL, Datalakes, or a stream. In this project, data is extracted from the Open-Meteo weather API to simulate a modern ETL system.
+
+\textbf{Transform} reshapes and cleans the data: fixing types, removing duplicates, joining tables and running quality checks. In this pipeline, transformation is handled by dbt, which runs SQL on a DuckDB warehouse.
+
+\textbf{Load} writes the processed data to its destination. Here the data is stored as Parquet files on Amazon S3, and transformed results are materialized as tables in DuckDB/MotherDuck.
+
+\subsection{Data Quality in ETL Pipelines}
+
+Data quality problems in ETL pipelines are common. Sources change their schemas, sensors send wrong readings, APIs return corrupted records, and values drift outside expected ranges over time. When these problems go undetected, they propagate through the pipeline into every downstream system.
+
+Chu et al. \cite{chu2016datacleaning} describe two types of data quality problems. Qualitative problems are violations of integrity constraints such as wrong types, missing values, or uniqueness failures. Quantitative problems are statistical anomalies that are technically valid values but unusual compared to what the data normally looks like. Rule-based checks address the first type well, but cannot address the second.
+
+Sculley et al. \cite{sculley2015hidden} showed that hidden technical debt in ML systems often comes from the data pipeline. When data quality is not monitored at the source, every downstream system inherits the problem.
+
+\subsection{The Case for Shift-Left Data Quality}
+
+``Shift-left'' means validating data as early as possible in the pipeline, ideally at the point of ingestion. If a bad record enters the pipeline at ingestion, it passes through every transformation after that. By the time it reaches an aggregated report or a trained model, it may be impossible to identify which source record caused the problem.
+
+Detecting the problem at ingestion stops this propagation immediately. The flagged record can be excluded from downstream processing before it reaches any consumer. This is the core argument for integrating anomaly detection into the ingestion layer rather than leaving it to downstream users \cite{datakitchen2023shiftleft, krishnan2016activeclean}.
+
+\subsection{Unsupervised Anomaly Detection}
+
+Unsupervised anomaly detection identifies unusual data points without labelled training data. The idea is to train a model on historical data to learn what normal looks like, then score new records based on how well they fit that learned distribution. Records that deviate significantly get a high anomaly score.
+
+
+In this work, PyOD library was selected for AutoML-based unsupervised anomaly detection over H2O AutoML, AutoGluon and PyCaret because of its targeted models for this task and simplicity of integration into the proposed ``Adaptive Profiling'' library.
+
+Four algorithms from the PyOD library \cite{zhao2019pyod} were selected by Optuna across all trained models in this project:
+
+\textbf{Local Outlier Factor (LOF)} measures the local density of a point compared to its neighbours. Points in relatively sparse local regions get high anomaly scores. It is effective for contextual anomalies and scales super-linearly with data size.
+
+\textbf{ECOD (Empirical Cumulative Distribution-based Outlier Detection)} estimates the tail probability of each feature using the empirical distribution. It is fast, interpretable, and essentially parameter-free, making it a strong baseline for univariate columns with tight distributions.
+
+\textbf{Histogram-based Outlier Score (HBOS)} estimates the density of each feature independently using histograms. It is fast and effective for low-dimensional data where features are approximately independent.
+
+\textbf{COPOD (Copula-based Outlier Detection)} uses empirical copula functions to model the joint distribution of features and scores outliers by their tail probability. It is fast and parameter-free.
+
+Campos et al. \cite{campos2016evaluation} show that no single algorithm dominates across all datasets. The right choice depends on the data, which is why automated model selection is important.
+
+\subsection{AutoML and Hyperparameter Optimisation}
+
+AutoML refers to automating the selection of algorithms and their hyperparameters. Instead of manually choosing between Isolation Forest, LOF, OCSVM and ECOD, and tuning each model by hand, an optimisation framework searches the possible configurations automatically.
+
+Optuna is used for this purpose and selected over Scikit-Optimize (skopt), Hyperopt and Ray Tune because it is simple to use, compatible with PyOD, and well suited for searching across model types and key hyperparameters.
+
+
+% ============================================================
+\section{Related Work}\label{sec:relatedwork}
+% ============================================================
+
+\subsection{ML-Based Quality in ETL Pipelines}
+
+Several recent studies have integrated machine learning into ETL data quality. Maddali \cite{Maddali2021AutomatingDQ} describe an ML-based quality system for ETL that automates detection without manual rule configuration. Raghu Gopa \cite{gopa2025aiaugmentedetl} show that AI-augmented ETL pipelines can detect anomalies and enforce data governance automatically at ingestion.
+
+What makes this work novel is the integration of AutoML based on historical data, which helps automate the tuning and retraining of models when data patterns change. This reduces the need for continuous engineering effort and lowers the cost of maintaining quality checks. In many teams, data engineers may not have the required machine learning domain knowledge, while close collaboration with data scientists can be difficult and costly. As a result, companies often continue to rely on rule-based quality checks and may overlook important failure points in the data.
+
+\subsection{Limitations of similar tools}
+
+The SIGMOD 2016 tutorial by Chu et al. \cite{chu2016datacleaning} draws a clear distinction between qualitative and quantitative data quality problems and shows that modern systems need both approaches. Rule-based systems like Deequ \cite{schelter2018automating} handle qualitative problems well but cannot detect statistical anomalies. A group of researchers \cite{taleb2016dqrules} document that rule-based systems require significant manual effort and systematically fail on anomalies that do not violate any written rule.
+
+\subsection{Cost of Late-Stage Cleaning}
+
+ActiveClean \cite{krishnan2016activeclean} shows that dirty data systematically biases downstream model parameters, and that cleaning earlier in the pipeline gives up to 2.5 times better model accuracy for the same cleaning budget. HoloClean \cite{rekatsinas2017holoclean} shows the broader trend away from pure rule-based quality toward learning-based approaches.
+
+\subsection{AutoML for Anomaly Detection}
+
+Koh et al. \cite{KOH2022107886} demonstrate AutoML applied end-to-end in an industrial domain, showing that an automated pipeline generalises across different dataset configurations without manual tuning. Emmott et al. \cite{emmott2013systematic} provide a methodology for constructing ground-truth anomaly detection benchmarks by injecting controlled anomalies, which is the evaluation approach used in this project.
+
+\subsection{Classical ML vs.\ Neural Networks for Tabular Anomaly Detection}
+\label{sec:relwork_nn}
+
+For high-dimensional inputs like images or audio, neural autoencoders are a natural fit for anomaly detection, however this logic does not carry over to low-dimensional tabular data. A single-column input gives the autoencoder nothing meaningful to compress. A network with even a few hidden layers can memorise the training set, so reconstruction error does not reliably separate anomalies from normal points.
+
+Campos et al.\ \cite{campos2016evaluation} evaluate nineteen unsupervised detectors on a large benchmark and find that density-based algorithms such as LOF consistently outperform more complex alternatives on low-dimensional tabular data. Zhao et al.\ \cite{zhao2019pyod} confirm the same finding in the PyOD benchmark: classical algorithms are competitive with or better than deep learning models on tabular tasks, and they require substantially less compute.
+
+Speed is also a practical concern. Training a neural network for tens to hundreds of epochs per Optuna trial is much more expensive than fitting a tree or density model. Section~\ref{sec:autonn_comparison} reports a direct comparison: classical AutoML achieves 4.1$\times$ higher mean F2-score at 6.9$\times$ lower search cost per column.
+
+
+% ============================================================
+\section{Methodology}\label{sec:approach}
+% ============================================================
+
+\subsection{System Architecture}
+
+The system adds ML-based anomaly detection to an ETL pipeline using open-source tools:
+
+\begin{itemize}
+  \item Apache Airflow for pipeline orchestration and scheduling
+  \item dbt for data transformation and schema metadata
+  \item AWS S3 and EC2 for hosting data and the Airflow scheduler
+  \item DuckDB/MotherDuck as a SQL warehouse
+  \item A custom Python library for ML-based anomaly detection using PyOD and Optuna
+  \item MLflow for model tracking, versioning, and metric logging
+\end{itemize}
+
+Figure~\ref{fig:workflow} shows the overall workflow and tool integration.
+
+\begin{figure}[!htbp]
+  \begin{center}
+  \includegraphics[width=0.95\textwidth]{images/workflow_diagram}
+  \end{center}
+  \caption{System architecture overview. Data flows from Airflow through the AutoML detection step and is tracked in MLflow. Anomaly flags are stored in DuckDB/MotherDuck.}
+  \label{fig:workflow}
+\end{figure}
+
+\subsection{Extending the Pipeline}
+
+Figure~\ref{fig:simple_etl} shows the baseline Airflow DAG. Five ingestion tasks run in parallel, one per city, and when they finish, dbt is triggered. Figure~\ref{fig:intended_etl} shows the extended DAG with AutoML detection tasks (in green) inserted after each ingestion step.
+
+% ── Shared DAG node/edge styles ──────────────────────────────────────────────
+\tikzset{
+  dagbash/.style={
+    draw=cyan!45!blue!80, fill=cyan!3!white,
+    rounded corners=5pt, line width=0.9pt,
+    minimum width=3.4cm, minimum height=1.1cm,
+    align=center, inner sep=5pt
+  },
+  dagpython/.style={
+    draw=violet!60, fill=violet!5,
+    rounded corners=5pt, line width=0.9pt,
+    minimum width=3.4cm, minimum height=1.1cm,
+    align=center, inner sep=5pt
+  },
+  dagauto/.style={
+    draw=green!50!black, fill=green!7,
+    rounded corners=5pt, line width=0.9pt,
+    minimum width=3.1cm, minimum height=1.1cm,
+    align=center, inner sep=5pt
+  },
+  dagarr/.style={-{Stealth[length=5pt,width=3.5pt]}, gray!60, line width=0.85pt,
+                 shorten >=1.5pt},
+  dagconn/.style={gray!55, line width=0.85pt},
+  dagdot/.style={circle, fill=green!60!black, inner sep=0pt, minimum size=7pt}
+}
+
+\begin{figure}[!htbp]
+\begin{center}
+\scalebox{0.85}{%
+\begin{tikzpicture}
+
+%% ── Nodes ───────────────────────────────────────────────────────────────────
+\node[dagbash] (install) at (0, 0)
+  {\textbf{\footnotesize install\_deps}\\[1pt]
+   \textcolor{gray!70}{\scriptsize BashOperator}};
+% city ingestion tasks  (short node-id / display-label / y-position)
+\node[dagbash] (ing_ams) at (5.1,  3.50)
+  {\textbf{\footnotesize ingest\_amsterdam}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+\node[dagbash] (ing_lon) at (5.1,  1.75)
+  {\textbf{\footnotesize ingest\_london}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+\node[dagbash] (ing_ny)  at (5.1,  0.00)
+  {\textbf{\footnotesize ingest\_new\_york}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+\node[dagbash] (ing_par) at (5.1, -1.75)
+  {\textbf{\footnotesize ingest\_paris}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+\node[dagbash] (ing_tok) at (5.1, -3.50)
+  {\textbf{\footnotesize ingest\_tokyo}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+
+\node[dagpython] (dbt) at (10.6, 0)
+  {\textbf{\footnotesize trigger\_dbt}\\[1pt]
+   \textcolor{gray!70}{\scriptsize PythonOperator}};
+\node[dagbash] (done) at (14.8, 0)
+  {\textbf{\footnotesize log\_done}\\[1pt]
+   \textcolor{gray!70}{\scriptsize BashOperator}};
+
+%% ── Success dots ────────────────────────────────────────────────────────────
+\foreach \n in {install,ing_ams,ing_lon,ing_ny,ing_par,ing_tok,dbt,done}{
+  \node[dagdot] at ([xshift=-4pt,yshift=-4pt]\n.north east) {};
+}
+
+%% ── Routing ─────────────────────────────────────────────────────────────────
+\coordinate (j1) at (2.15, 0);
+\coordinate (j2) at (7.8, 0);
+
+\draw[dagconn] (install.east) -- (j1);
+\draw[dagconn] (j1 |- ing_ams.west) -- (j1 |- ing_tok.west);
+\foreach \n in {ing_ams,ing_lon,ing_ny,ing_par,ing_tok}{
+  \draw[dagarr] (j1 |- \n.west) -- (\n.west);
+  \draw[dagconn] (\n.east) -- (j2 |- \n.east);
+}
+\draw[dagconn] (j2 |- ing_ams.east) -- (j2 |- ing_tok.east);
+\draw[dagarr] (j2) -- (dbt.west);
+\draw[dagarr] (dbt.east) -- (done.west);
+
+%% ── Legend ──────────────────────────────────────────────────────────────────
+\node[dagbash,   minimum width=2.4cm, minimum height=0.6cm, font=\scriptsize]
+  at (1.2, -5.1) {BashOperator};
+\node[dagpython, minimum width=2.4cm, minimum height=0.6cm, font=\scriptsize]
+  at (4.1, -5.1) {PythonOperator};
+\node[dagdot] at (6.6, -5.1) {};
+\node[font=\scriptsize, anchor=west] at (6.9, -5.1) {Success};
+
+\end{tikzpicture}
+}% end scalebox
+\end{center}
+\caption{Baseline Airflow DAG for weather ingestion. Five ingestion tasks run in parallel, one per city.
+Once all complete, \texttt{trigger\_dbt} runs SQL transformations and \texttt{log\_done} records the result.}
+\label{fig:simple_etl}
+\end{figure}
+
+\begin{figure}[!htbp]
+\begin{center}
+\scalebox{0.78}{%
+\begin{tikzpicture}
+
+%% ── Nodes ───────────────────────────────────────────────────────────────────
+\node[dagbash, minimum width=3.0cm] (install) at (0, 0)
+  {\textbf{\footnotesize install\_deps}\\[1pt]
+   \textcolor{gray!70}{\scriptsize BashOperator}};
+% ingest + automl pairs per city
+\node[dagbash,  minimum width=3.0cm] (ing_ams) at (4.0,  3.50)
+  {\textbf{\footnotesize ingest\_amsterdam}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+\node[dagbash,  minimum width=3.0cm] (ing_lon) at (4.0,  1.75)
+  {\textbf{\footnotesize ingest\_london}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+\node[dagbash,  minimum width=3.0cm] (ing_ny)  at (4.0,  0.00)
+  {\textbf{\footnotesize ingest\_new\_york}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+\node[dagbash,  minimum width=3.0cm] (ing_par) at (4.0, -1.75)
+  {\textbf{\footnotesize ingest\_paris}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+\node[dagbash,  minimum width=3.0cm] (ing_tok) at (4.0, -3.50)
+  {\textbf{\footnotesize ingest\_tokyo}\\[1pt]\textcolor{gray!70}{\scriptsize BashOperator}};
+
+\node[dagauto] (aml_ams) at (7.9,  3.50)
+  {\textbf{\footnotesize automl\_amsterdam}\\[1pt]\textcolor{gray!70}{\scriptsize PythonOperator}};
+\node[dagauto] (aml_lon) at (7.9,  1.75)
+  {\textbf{\footnotesize automl\_london}\\[1pt]\textcolor{gray!70}{\scriptsize PythonOperator}};
+\node[dagauto] (aml_ny)  at (7.9,  0.00)
+  {\textbf{\footnotesize automl\_new\_york}\\[1pt]\textcolor{gray!70}{\scriptsize PythonOperator}};
+\node[dagauto] (aml_par) at (7.9, -1.75)
+  {\textbf{\footnotesize automl\_paris}\\[1pt]\textcolor{gray!70}{\scriptsize PythonOperator}};
+\node[dagauto] (aml_tok) at (7.9, -3.50)
+  {\textbf{\footnotesize automl\_tokyo}\\[1pt]\textcolor{gray!70}{\scriptsize PythonOperator}};
+
+\node[dagpython] (dbt)  at (12.4, 0)
+  {\textbf{\footnotesize trigger\_dbt}\\[1pt]
+   \textcolor{gray!70}{\scriptsize PythonOperator}};
+\node[dagbash, minimum width=3.0cm] (done) at (16.2, 0)
+  {\textbf{\footnotesize log\_done}\\[1pt]
+   \textcolor{gray!70}{\scriptsize BashOperator}};
+
+%% ── Success dots ────────────────────────────────────────────────────────────
+\foreach \n in {install,ing_ams,ing_lon,ing_ny,ing_par,ing_tok,
+                aml_ams,aml_lon,aml_ny,aml_par,aml_tok,dbt,done}{
+  \node[dagdot] at ([xshift=-4pt,yshift=-4pt]\n.north east) {};
+}
+
+%% ── Routing ─────────────────────────────────────────────────────────────────
+\coordinate (j1) at (1.7, 0);
+\coordinate (j2) at (10.3, 0);
+
+\draw[dagconn] (install.east) -- (j1);
+\draw[dagconn] (j1 |- ing_ams.west) -- (j1 |- ing_tok.west);
+\foreach \n in {ing_ams,ing_lon,ing_ny,ing_par,ing_tok}{
+  \draw[dagarr] (j1 |- \n.west) -- (\n.west);
+}
+% ingest → automl direct arrows
+\foreach \i/\a in {ing_ams/aml_ams,ing_lon/aml_lon,ing_ny/aml_ny,
+                   ing_par/aml_par,ing_tok/aml_tok}{
+  \draw[dagarr] (\i.east) -- (\a.west);
+}
+% automl → vertical bar right
+\foreach \n in {aml_ams,aml_lon,aml_ny,aml_par,aml_tok}{
+  \draw[dagconn] (\n.east) -- (j2 |- \n.east);
+}
+\draw[dagconn] (j2 |- aml_ams.east) -- (j2 |- aml_tok.east);
+\draw[dagarr] (j2) -- (dbt.west);
+\draw[dagarr] (dbt.east) -- (done.west);
+
+%% ── Legend ──────────────────────────────────────────────────────────────────
+\node[dagbash,   minimum width=2.4cm, minimum height=0.6cm, font=\scriptsize]
+  at (1.2, -5.1) {BashOperator};
+\node[dagpython, minimum width=2.4cm, minimum height=0.6cm, font=\scriptsize]
+  at (4.1, -5.1) {PythonOperator};
+\node[dagauto,   minimum width=2.4cm, minimum height=0.6cm, font=\scriptsize]
+  at (7.3, -5.1) {AutoML Task};
+\node[dagdot] at (9.8, -5.1) {};
+\node[font=\scriptsize, anchor=west] at (10.1, -5.1) {Success};
+
+\end{tikzpicture}
+}
+\end{center}
+\caption{Extended Airflow DAG with AutoML detection tasks (green) inserted after each city's ingestion.
+Each \texttt{automl\_*} task loads the city's pre-trained anomaly detection model, scores the newly
+ingested batch, and writes anomaly flags back to the warehouse. All original tasks are unchanged.}
+\label{fig:intended_etl}
+\end{figure}
+
+\subsection{The Adaptive Profiler Library}
+
+Quality checking in this pipeline has two layers.
+
+The first layer is \textbf{rule-based}. Every column has an expected type, a valid range, and a not-null constraint. These rules form a data contract: a written agreement about what the data should look like. dbt enforces a similar contract at the transformation layer through schema tests on the warehouse models. Both rule sets run on every incoming batch and flag any record that violates a constraint.
+
+Rule-based checks are fast and transparent, but limited. A rule like \texttt{range: [-10, 60]} for temperature in Celsius will not catch a sensor reading of 0°C when every other reading in the past three days was above 25°C.
+
+The second layer is \textbf{ML-based}. For any column marked \texttt{automl: true} in the configuration, a statistical model is trained on recent historical data. The model learns what normal looks like for that column and flags values that fall outside its learned distribution, even when they pass all rule-based checks. This is what the library calls adaptive profiling.
+
+Both layers are declared in a single YAML configuration file. An example is shown below.
+
+\newpage
+
+\begin{lstlisting}[language=yaml, caption={Example \texttt{profiling\_schema.yml}. Each column declares a type and rule-based checks (data contract layer) and optionally enables an AutoML model (\texttt{automl: true}).}]
+# Where trained models are saved
+model_store:
+  backend: s3
+  bucket: weather-etl-bucket
+
+# Optuna search settings
+training:
+  n_trials: 25
+  min_train_rows: 500
+
+# Per-column configuration
+columns:
+  temperature_2m:
+    type: float         # expected data type (data contract)
+    unit: celsius
+    automl: true        # ML anomaly detection enabled
+    checks:
+      not_null: true
+      range: [-10, 60]
+
+  surface_pressure:
+    type: float
+    unit: hPa
+    automl: true
+    checks:
+      not_null: true
+      range: [870, 1085]
+
+  precipitation:
+    type: float
+    unit: mm
+    automl: true        # ML model trained and used for scoring
+    checks:
+      not_null: true
+      range: [0, 300]
+
+  wind_speed:
+    type: float
+    unit: km/h
+    automl: false       # rule checks only for this column
+    checks:
+      not_null: true
+      range: [0, 200]
+\end{lstlisting}
+
+In \textbf{training mode}, Optuna searches for the best model and hyperparameters for each configured column. Trained models are saved to S3 under a path that includes the column name and city, so Amsterdam gets its own model trained on Amsterdam's weather patterns.
+
+In \textbf{scoring mode}, the profiler loads the saved model for each column and scores new incoming rows. The output is a long-format DataFrame with one row per (timestamp, column) containing the anomaly score, a binary flag, and any rule-based violations. Failures are reported in the output rather than raised as exceptions so the pipeline keeps running.
+
+\subsection{Training on Recent Batches}
+
+In real-world ETL pipelines, historical data can span years or even decades, making it impractical to retrain on the full history every time. Loading millions of rows just to update an anomaly detection model would be too slow and too expensive for a daily pipeline, so the system trains on recent batches instead. Only the most recent window of data is used, and this window can be configured through the Adaptive Profiling library.
+
+This keeps training fast and computation manageable while still giving the model enough data to learn stable patterns. It also allows the model to adapt over time: if a data source gradually shifts due to seasonal change, sensor recalibration, or a source system update, the next scheduled retraining picks up the new pattern automatically.
+
+\subsection{Dataset}
+
+The experiments use weather data from the Open-Meteo API, benchmarked across five different cities: Amsterdam, New York, London, Paris, and Tokyo. Each hourly record contains temperature, apparent temperature, precipitation, surface pressure, soil temperature, and soil moisture. The data is stored in Parquet format on Amazon S3. Each city dataset contains approximately 20,856 hourly records.
+
+Weather data was selected for this work because it is widely used by businesses to improve planning, prediction, and service optimisation. For example:
+\begin{itemize}
+  \item \textbf{TomTom/Google Maps:} Weather conditions can be compared with historical traffic patterns to improve traffic estimation systems.
+  \item \textbf{UPS/FedEx/Amazon:} Delivery delays can be compared with weather conditions to improve route planning, ETA prediction, and driver scheduling.
+  \item \textbf{Uber/Bolt:} Weather effects on ride demand, cancellations, pickup delays, and surge pricing can be analysed.
+  \item Many other businesses ingest weather data to improve pricing, operations, and service optimisation.
+\end{itemize}
+
+
+\subsection{Experiment Design}
+
+The two research sub-questions map to two main experiments, with one additional validation experiment comparing the chosen classical AutoML approach to a neural architecture search alternative.
+
+\textbf{Experiment 1: Detection effectiveness.} To answer how accurately ML-based detection finds data quality issues compared to rule-based checks, controlled anomalies are injected into the data and the system's detections are compared against the known injection labels. This directly measures detection quality.
+
+\textbf{Experiment 2: Practical overhead.} To answer the practical impact question, a built-in projection tool in the profiling library benchmarks training time across different data sizes, column counts, trial budgets, and hardware configurations, and fits an empirical scaling law to the results.
+
+\subsubsection{Experiment 1: Anomaly Injection and Detection}
+
+A randomly selected subset of records (approximately 0.36\%, around 76 records per city) has one column's value shifted by a controlled amount. The injected records serve as ground-truth labels.
+
+Model performance is measured with precision, recall, F1-score, and F2-score. F2 weights recall more heavily than precision. Missing a real anomaly is considered worse than a false alarm.
+
+\subsubsection{Experiment 2: Scaling and Cost Projection}
+
+The projection tool runs the full training pipeline across approximately 90 benchmark configurations, varying data size, column count, and Optuna trial budget. Results are fitted to an empirical power-law scaling model:
+
+$$T(n, m, k) = \alpha \cdot n^{\beta} \cdot m^{\delta} \cdot k^{\gamma}$$
+
+where $n$ is the number of rows, $m$ the number of columns, and $k$ the number of Optuna trials. Once fitted, the formula predicts training time for any configuration. Run it on a small sample, get an estimated time for the full dataset, and decide whether the overhead is acceptable before setting up production.
+
+This parameters are given by the Adaptive Profiling library by embedded experiment feature to have an estimation over projection to larger scale data and possibility of using on different set of metrics and pipelines.
+
+
+% ============================================================
+\section{Results}\label{sec:experiments}
+% ============================================================
+
+The pipeline targets obvious data quality failures, not every subtle statistical deviation. The focus is on anomalies from upstream system failures: a sensor stuck at zero, a data feed that goes silent, or a value so far outside historical range that no operator would accept it. High sensitivity is avoided on purpose. Noisy signals like precipitation and temperature would produce too many false alarms at low thresholds.
+
+The injected anomalies in the experiments below are moderate shifts, not extreme spikes, which makes the evaluation harder than a typical real-world failure scenario.
+
+\subsection{Experiment 1: Detection Effectiveness}
+
+\subsubsection{Injected Anomalies}
+
+Figure~\ref{fig:injected} shows a close-up of Amsterdam temperature, where pink markers indicate synthetic anomalies injected into the data. Blue points represent normal readings. Out of 20,856 hourly records, 74 anomalies were injected at a rate of 0.36\%, with varying positive or negative shifts distributed randomly to measure model accuracy across different shift percentages.
+
+\begin{figure}[!htbp]
+  \begin{center}
+  \includegraphics[width=\textwidth]{images/AMS_Injected_anomalies_chart}
+  \end{center}
+  \caption{A snapshot of Amsterdam temperature data from September 2025 to January 2026. A total of 74 anomalies were injected, corresponding to a 0.36\% anomaly rate.}
+  \label{fig:injected}
+\end{figure}
+
+\subsubsection{Amsterdam Detection Results}
+
+For comparison, the rule-based check on temperature defined a valid range of $[-10, 60]$\,°C. All injected anomalies were within this range (subtle statistical shifts, not extreme values), so the rule-based check caught \textbf{zero} of the 74 anomalies. The ML-based model detected 53 of the same 74 (71.6\% recall).
+
+Figure~\ref{fig:ams_bar} shows precision, recall, and F1 for all six univariate columns in Amsterdam. Each bar represents the metric for the best model selected by Optuna for that column.
+
+\begin{figure}[!htbp]
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  xbar,
+  width=13cm, height=9.5cm,
+  bar width=5.2pt,
+  xmin=0, xmax=108,
+  xlabel={Score (\%)},
+  symbolic y coords={
+    Soil Moisture,
+    Soil Temp.,
+    Surface Pressure,
+    Precipitation,
+    Apparent Temp.,
+    Temperature
+  },
+  ytick=data,
+  yticklabel style={font=\small},
+  legend style={at={(0.98,0.08)}, anchor=south east, font=\small,
+                legend columns=1, draw=codeborder, fill=codebg},
+  legend cell align=left,
+  enlarge y limits=0.12,
+  tick align=outside,
+  axis line style={draw=gray!60},
+  major grid style={draw=gray!20},
+  xmajorgrids=true,
+  xtick={0,20,40,60,80,100},
+  nodes near coords,
+  nodes near coords style={font=\tiny, /pgf/number format/.cd, fixed, precision=0},
+]
+% Precision bars
+\addplot[xbar, fill=precision, fill opacity=0.85, draw=precision!80!black]
+  coordinates {
+    (87.0,Soil Moisture)
+    (87.1,Soil Temp.)
+    (72.0,Surface Pressure)
+    (52.2,Precipitation)
+    (49.2,Apparent Temp.)
+    (52.5,Temperature)
+  };
+% Recall bars
+\addplot[xbar, fill=recall, fill opacity=0.85, draw=recall!80!black]
+  coordinates {
+    (94.4,Soil Moisture)
+    (98.7,Soil Temp.)
+    (100.0,Surface Pressure)
+    (17.4,Precipitation)
+    (40.3,Apparent Temp.)
+    (71.6,Temperature)
+  };
+% F1 bars
+\addplot[xbar, fill=f1color, fill opacity=0.85, draw=f1color!80!black]
+  coordinates {
+    (90.5,Soil Moisture)
+    (92.5,Soil Temp.)
+    (83.7,Surface Pressure)
+    (26.1,Precipitation)
+    (44.3,Apparent Temp.)
+    (60.6,Temperature)
+  };
+\legend{Precision, Recall, F1}
+\end{axis}
+\end{tikzpicture}
+\end{center}
+\caption{Precision, Recall, and F1 for Amsterdam univariate detection across all six columns. Best model per column selected by Optuna. Surface pressure and soil columns achieve the highest recall. Precipitation is the hardest column.}
+\label{fig:ams_bar}
+\end{figure}
+
+\begin{itemize}
+  \item \textbf{Precision} of all flags raised, how many were real anomalies (low false-alarm rate).
+  \item \textbf{Recall} of all real anomalies, how many were caught (low miss rate).
+  \item \textbf{F1} balance between the two; high only when both are high.
+\end{itemize}
+Recall matters more here: a missed anomaly silently corrupts downstream data, while a false alarm costs only a manual review.
+
+\subsubsection{Discussion of Amsterdam Results}
+\label{ssub:amsterdam_results}
+
+\textbf{Column characteristics determine performance.} Surface pressure and soil columns have tight, predictable distributions, so even small shifts are statistically unusual. Temperature is noisier due to seasonal variation, and some injected anomalies overlap with natural extreme values. Precipitation is the hardest column because it is heavily right-skewed (most hours have zero rain).
+
+\textbf{When AutoML is not the right choice.} Figure~\ref{fig:ams_precipitation} shows Amsterdam precipitation which follows a heavily right-skewed distribution: most hours record zero rain, and the hours that do have rainfall are highly variable with no stable seasonal shape. A model trained on this column had difficulty distinguishing an injected anomaly from a naturally extreme value in this dataset, which explains the consistently low F2 scores for precipitation across all five cities in these experiments. Columns with this kind of distribution may not be good candidates for ML-based anomaly detection. Running the profiling pipeline on a data sample before production deployment lets a data engineer identify these columns early and set \texttt{automl: false} for them rather than spending trials on a model that is unlikely to converge to a useful threshold.
+
+\begin{figure}[!htbp]
+  \begin{center}
+  \includegraphics[width=\textwidth]{images/ams_precip.png}
+  \end{center}
+  \caption{Amsterdam precipitation from Apr 2024 to Apr 2026. Most hours record zero rain and the rest are highly variable, leaving no stable pattern to learn. AutoML performed poorly on anomaly detection for this task due to the nature of this specific data.}
+  \label{fig:ams_precipitation}
+\end{figure}
+
+\begin{figure}[!htbp]
+  \begin{center}
+  \includegraphics[width=\textwidth]{images/ams_surface_pressure}
+  \end{center}
+  \caption{Amsterdam surface pressure from Apr 2024 to Apr 2026 with AutoML. ECOD selected by Optuna achieves 100\% recall where all injected anomalies fall clearly outside the tight normal pressure band.}
+  \label{fig:pressure}
+\end{figure}
+
+\subsubsection{Model Selection Across All Cities}
+
+Figure~\ref{fig:donut} shows which algorithm Optuna selected across all 30 trained models (5 cities $\times$ 6 columns). LOF was chosen in 80\% of cases and ECOD won on surface pressure in 4 out of 5 cities (Paris used HBOS instead).
+
+\begin{figure}[!htbp]
+\begin{center}
+\begin{tikzpicture}
+% LOF: 29/35 = 82.86% -> 298.3 degrees
+% ECOD: 4/35 = 11.43% -> 41.1 degrees
+% HBOS: 1/35 = 2.86% -> 10.3 degrees
+% COPOD: 1/35 = 2.86% -> 10.3 degrees
+\def\R{2.6}   % outer radius
+\def\r{1.4}   % inner radius
+
+% LOF slice: 0 to 298.3 deg
+\fill[leidenblue!85, draw=white, line width=1.5pt]
+  (0,0) -- ({cos(0)*\R},{sin(0)*\R})
+  arc[start angle=0, end angle=298.3, radius=\R]
+  -- ({cos(298.3)*\r},{sin(298.3)*\r})
+  arc[start angle=298.3, end angle=0, radius=\r]
+  -- cycle;
+
+% ECOD slice: 298.3 to 339.4 deg
+\fill[recall!75, draw=white, line width=1.5pt]
+  (0,0) -- ({cos(298.3)*\R},{sin(298.3)*\R})
+  arc[start angle=298.3, end angle=339.4, radius=\R]
+  -- ({cos(339.4)*\r},{sin(339.4)*\r})
+  arc[start angle=339.4, end angle=298.3, radius=\r]
+  -- cycle;
+
+% HBOS slice: 339.4 to 349.7 deg
+\fill[f1color!80, draw=white, line width=1.5pt]
+  (0,0) -- ({cos(339.4)*\R},{sin(339.4)*\R})
+  arc[start angle=339.4, end angle=349.7, radius=\R]
+  -- ({cos(349.7)*\r},{sin(349.7)*\r})
+  arc[start angle=349.7, end angle=339.4, radius=\r]
+  -- cycle;
+
+% COPOD slice: 349.7 to 360 deg
+\fill[colorgray!70, draw=white, line width=1.5pt]
+  (0,0) -- ({cos(349.7)*\R},{sin(349.7)*\R})
+  arc[start angle=349.7, end angle=360, radius=\R]
+  -- ({cos(360)*\r},{sin(360)*\r})
+  arc[start angle=360, end angle=349.7, radius=\r]
+  -- cycle;
+
+% Centre label
+\node[font=\bfseries\large, text=gray!70] at (0,0) {35};
+\node[font=\small, text=gray!60] at (0,-0.35) {models};
+
+% Legend placed to the right using node
+\node[anchor=west, xshift=0.5cm] at (3.2,0) {%
+  \begin{tabular}{@{}ll@{}}
+    \tikz\fill[leidenblue!85] (0,0) rectangle (0.3,0.2); & LOF \quad 83\% (29 models)\\[4pt]
+    \tikz\fill[recall!75] (0,0) rectangle (0.3,0.2);     & ECOD \quad 11\% (4 models)\\[4pt]
+    \tikz\fill[f1color!80] (0,0) rectangle (0.3,0.2);    & HBOS \quad 3\% (1 model)\\[4pt]
+    \tikz\fill[colorgray!70] (0,0) rectangle (0.3,0.2);  & COPOD \quad 3\% (1 model)\\
+  \end{tabular}
+};
+\end{tikzpicture}
+\end{center}
+\caption{Algorithm selected by Optuna across all 30 trained models (5 cities $\times$ 6 columns). LOF was selected in 80\% of cases. ECOD won on the surface pressure column in 4 out of 5 cities (Paris used HBOS).}
+\label{fig:donut}
+\end{figure}
+
+\textbf{Why LOF was chosen most often.} LOF compares each data point to its nearest neighbours. For weather data, those neighbours are readings from the same season. An injected anomaly stands out because it does not fit with the other values around it in time, which is exactly what LOF measures.
+
+\textbf{Why ECOD won on surface pressure.} Atmospheric pressure stays within a very narrow range most of the time. ECOD scores each value by how far it sits in the tail of the observed distribution. An injected shift lands immediately in that tail, making it easy to flag. Figure~\ref{fig:pressure} shows Amsterdam surface pressure: injected anomalies fall clearly outside the normal pressure band. The same pattern held in 4 of the 5 cities; Paris used HBOS for surface pressure instead, though also achieving high recall.
+
+\subsubsection{Multi-City Comparison}
+
+Figure~\ref{fig:multicity} compares F2 scores across all five cities for three representative columns: surface pressure (best performing), soil moisture (consistently high), and temperature (most variable).
+
+\begin{figure}[!htbp]
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  ybar,
+  width=13.5cm, height=7cm,
+  bar width=9pt,
+  ymin=0, ymax=1.09,
+  ylabel={F2 Score},
+  symbolic x coords={Amsterdam, London, New York, Paris, Tokyo},
+  xtick=data,
+  xticklabel style={font=\small},
+  legend style={at={(0.5,1.03)}, anchor=south, font=\small,
+                legend columns=3, draw=codeborder, fill=codebg},
+  legend cell align=left,
+  enlarge x limits=0.15,
+  tick align=outside,
+  axis line style={draw=gray!60},
+  ymajorgrids=true,
+  major grid style={draw=gray!20},
+  ytick={0,0.2,0.4,0.6,0.8,1.0},
+  yticklabel={\pgfmathprintnumber[fixed,precision=1]{\tick}},
+  nodes near coords,
+  nodes near coords style={font=\tiny, rotate=90, anchor=west,
+    /pgf/number format/.cd, fixed, precision=2},
+]
+% Surface pressure F2
+\addplot[fill=precision, fill opacity=0.85, draw=precision!80!black]
+  coordinates {
+    (Amsterdam, 0.93)
+    (London,    0.96)
+    (New York,  0.93)
+    (Paris,     0.94)
+    (Tokyo,     0.97)
+  };
+% Soil moisture F2
+\addplot[fill=recall, fill opacity=0.85, draw=recall!80!black]
+  coordinates {
+    (Amsterdam, 0.93)
+    (London,    0.98)
+    (New York,  1.00)
+    (Paris,     0.95)
+    (Tokyo,     0.97)
+  };
+% Temperature F2
+\addplot[fill=colorgray, fill opacity=0.85, draw=colorgray!80!black]
+  coordinates {
+    (Amsterdam, 0.67)
+    (London,    0.14)
+    (New York,  0.79)
+    (Paris,     0.26)
+    (Tokyo,     0.04)
+  };
+\legend{Surface Pressure, Soil Moisture, Temperature 2m}
+\end{axis}
+\end{tikzpicture}
+\end{center}
+\caption{F2 scores across all five cities for three representative columns. Surface pressure and soil moisture are consistently high across all cities. Temperature detection varies significantly, suggesting that local climate variability and the column's noise level strongly influence difficulty.}
+\label{fig:multicity}
+\end{figure}
+
+The multi-city comparison reveals an important finding: performance is consistent across cities for the well-structured columns (surface pressure, soil moisture), but highly variable for noisy ones like temperature. London and Tokyo show very low temperature F2 scores (0.14 and 0.04), while Amsterdam and New York are much higher (0.67 and 0.79). This suggests that temperature is harder to profile in climates with more erratic variation. In such cases, the accuracy threshold is suggested to be increased to detect failure points or very inconsistent data.
+
+\subsubsection{Shift Magnitude vs. Detection Rate}
+
+Figure~\ref{fig:shift} shows how detection rate changes with the size of the injected shift, measured as a percentage of the column's natural value range.
+
+\begin{figure}[!htbp]
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  xbar,
+  width=11cm, height=6.5cm,
+  bar width=13pt,
+  xmin=0, xmax=108,
+  xlabel={Detection rate (\%)},
+  ytick={1,2,3,4,5,6},
+  yticklabels={2\% shift, 4\% shift, 6\% shift, 8\% shift, 10\% shift, 12\% shift},
+  yticklabel style={font=\small},
+  tick align=outside,
+  axis line style={draw=gray!60},
+  xmajorgrids=true,
+  major grid style={draw=gray!20},
+  xtick={0,20,40,60,80,100},
+  enlarge y limits=0.12,
+  nodes near coords,
+  nodes near coords style={font=\small, /pgf/number format/.cd, fixed, precision=0},
+]
+\addplot[xbar, fill=leidenblue, fill opacity=0.80, draw=leidenblue!80!black]
+  coordinates {(20,1) (52,2) (72,3) (87,4) (97,5) (100,6)};
+\end{axis}
+\end{tikzpicture}
+\end{center}
+\caption{Detection rate by injected shift size for Amsterdam temperature (univariate LOF). The shift is expressed as a percentage of the column's natural value range. Very small anomalies (2\%) are hard to distinguish from normal variation. Anomalies of 10\% or more are caught reliably.}
+\label{fig:shift}
+\end{figure}
+
+Detection reaches near 100\% for shifts of 10 to 12\% of the column's value range, and drops to around 70--80\% for smaller shifts of 4 to 6\%. This threshold is useful for deciding if the model is sensitive enough for a given use case.
+
+\subsection{Experiment 2: Practical Overhead and Scaling}
+
+The second experiment answers the second research sub-question: is ML-based profiling practical in terms of pipeline overhead and resource usage?
+
+A built-in projection tool in the profiling library benchmarks training time across different data sizes, column counts, and trial budgets, then fits an empirical scaling law to the results. It was run across approximately 90 benchmark configurations on the same hardware used for production. This tool lets any user predict how long training will take at their full data scale before committing to a deployment.
+
+\subsubsection{The Scaling Formula}
+
+The formula is inspired by work in ML research showing that training behaviour follows power laws. Kaplan et al.\ \cite{kaplan2020scalinglawsneurallanguage} showed that for large language models, performance scales predictably with data size, model size, and compute. Each factor contributes independently, so they can be multiplied together. The result has the shape: \emph{performance = constant $\times$ (data size)$^\text{exponent}$ $\times$ (model size)$^\text{exponent}$}. Bordelon et al.\ \cite{pmlr-v235-bordelon24a} later showed theoretically that training time, data size, and model size each carry their own power-law exponent, and those exponents can differ from each other.
+
+The formula uses the same structure where inputs are rows ($n$), columns ($m$), and Optuna trials ($k$). Hardware power directly affect the $\alpha$ constant across all benchmark runs. The fitted formula is:
+
+$$T(n,\, m,\, k) \;=\; \alpha \cdot n^{\,\beta} \cdot m^{\,\delta} \cdot k^{\,\gamma}$$
+
+Table~\ref{tab:scaling_params} explains what each symbol means and where its value comes from.
+
+\begin{table}[H]
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}llX@{}}
+\toprule
+Symbol & Name & Definition \\
+\midrule
+$n$      & Rows              & Number of records used for training \\
+$m$      & Columns           & Number of features to be profiled having \texttt{automl: true} \\
+$k$      & Trials            & Amount of models and parameters Optuna tries \\
+\midrule
+$\alpha$ & Baseline constant & Fitted from benchmark runs which correlates with the hardware\\
+$\beta$  & Row exponent      & Fitted by benchmarking at different row counts \\
+$\delta$ & Column exponent   & Fitted by benchmarking at different column counts \\
+$\gamma$ & Trial exponent    & Fitted by benchmarking at different trial counts \\
+\bottomrule
+\end{tabularx}
+\end{center}
+\caption{Inputs and fitted parameters. $n$, $m$, $k$ are known at runtime. The exponents $\beta$, $\delta$, $\gamma$ are hardware-independent and describe how time scales with each factor. $\alpha$ is hardware-dependent and was fitted on the benchmark machine.}
+\label{tab:scaling_params}
+\end{table}
+
+The exponents $\beta$, $\delta$, $\gamma$ are properties of the algorithms and data structure where they do not change with hardware. Only $\alpha$ changes if the experiment runs on a different machine. All four values can only be obtained by running the projection tool across different configurations and measuring real training times.
+
+\subsubsection{Scaling Behaviour Depends on Algorithm Choice}
+
+The key exponent is $\beta$, which controls how training time grows as the dataset gets larger. Table~\ref{tab:beta_meaning} shows what different values of $\beta$ mean in practice.
+
+\begin{table}[!htbp]
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+$\beta$ value & Scaling behaviour & Effect of doubling the data \\
+\midrule
+$= 1.0$ & Linear      & Training time also doubles \\
+$< 1.0$ & Sub-linear  & Training time grows slower than the data \\
+$> 1.0$ & Super-linear & Training time grows faster than the data \\
+\midrule
+\textit{IForest (best):} $0.307$ & Sub-linear  & Doubled data took $1.24\times$ more time \\
+\bottomrule
+\end{tabular}
+\end{center}
+\caption{What different values of $\beta$ mean for how training time scales with data size.}
+\label{tab:beta_meaning}
+\end{table}
+
+Figure~\ref{fig:train_scaling} shows per-algorithm training time projections. The fitted $\beta$ values span from 0.307 (IForest, sub-linear) to 1.175 (LOF, super-linear). The key finding is that \textbf{algorithm choice determines scaling behaviour more than data size alone}.
+
+\begin{figure}[H]
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  width=13cm, height=7cm,
+  xlabel={Dataset size (rows)},
+  ylabel={Training time (seconds)},
+  xmode=log, ymode=log,
+  xmin=400, xmax=25000,
+  ymin=0.3, ymax=55,
+  xtick={500,1000,2500,5000,10000,20000},
+  xticklabels={500, 1k, 2.5k, 5k, 10k, 20k},
+  ytick={0.5,1,2,5,10,20,40},
+  yticklabels={0.5, 1, 2, 5, 10, 20, 40},
+  tick align=outside,
+  axis line style={draw=gray!60},
+  ymajorgrids=true,
+  xmajorgrids=true,
+  major grid style={draw=gray!20},
+  legend style={at={(0.03,0.97)}, anchor=north west, font=\small,
+                draw=codeborder, fill=codebg, legend columns=1},
+  legend cell align=left,
+]
+% IForest projection
+\addplot[color=recall, dashed, thick]
+  coordinates {(500,0.490)(1000,0.607)(2500,0.831)(5000,0.993)(10000,1.230)(20000,1.523)};
+\addlegendentry{IForest ($\beta=0.307$)}
+% HBOS projection
+\addplot[color=f1color, dashed, thick]
+  coordinates {(500,0.490)(1000,0.767)(2500,1.384)(5000,2.164)(10000,3.383)(20000,5.292)};
+\addlegendentry{HBOS ($\beta=0.645$)}
+% ECOD projection
+\addplot[color=violet!80, dashed, thick]
+  coordinates {(500,0.490)(1000,0.943)(2500,2.242)(5000,4.317)(10000,8.315)(20000,16.01)};
+\addlegendentry{ECOD ($\beta=0.945$)}
+% LOF projection
+\addplot[color=red!70!black, dashed, thick]
+  coordinates {(500,0.490)(1000,1.108)(2500,3.115)(5000,7.330)(10000,16.55)(20000,37.37)};
+\addlegendentry{LOF ($\beta=1.175$)}
+\end{axis}
+\end{tikzpicture}
+\end{center}
+\caption{Per-algorithm training time projections on a log--log scale, anchored at the same starting point (500 rows). Steeper slope indicates higher $\beta$. LOF is the only super-linear algorithm.}
+\label{fig:train_scaling}
+\end{figure}
+
+Table~\ref{tab:multipliers} shows the effect of $\beta$ on scaling for each algorithm when data size grows.
+
+\begin{table}[H]
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Algorithm & $\beta$ & $2\times$ data & $10\times$ data \\
+\midrule
+IForest  & 0.307 & $1.24\times$ more time & $2.03\times$ more time \\
+HBOS     & 0.645 & $1.56\times$ more time & $4.42\times$ more time \\
+ECOD     & 0.945 & $1.93\times$ more time & $8.81\times$ more time \\
+LOF      & 1.175 & $2.26\times$ more time & $14.96\times$ more time \\
+\bottomrule
+\end{tabular}
+\end{center}
+\caption{How training time multiplies when data grows, per algorithm.}
+\label{tab:multipliers}
+\end{table}
+
+\subsubsection{Per-Algorithm Scaling}
+
+Figure~\ref{fig:beta_chart} summarises the fitted $\beta$ per algorithm. IForest is the most scalable. LOF is the only super-linear algorithm.
+
+\begin{figure}[H]
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  xbar,
+  width=11cm, height=6cm,
+  bar width=14pt,
+  xmin=0, xmax=1.42,
+  xlabel={Row scaling exponent $\beta$ (lower is better)},
+  symbolic y coords={LOF, ECOD, COPOD, HBOS, IForest},
+  ytick=data,
+  yticklabel style={font=\small\bfseries},
+  tick align=outside,
+  axis line style={draw=gray!60},
+  xmajorgrids=true,
+  major grid style={draw=gray!20},
+  xtick={0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2},
+  enlarge y limits=0.18,
+  nodes near coords,
+  nodes near coords style={font=\small, /pgf/number format/.cd, fixed, precision=3},
+  % reference line at beta=1
+  extra x ticks={1.0},
+  extra x tick style={
+    grid=major,
+    grid style={dashed, red!60, line width=0.8pt},
+    tick style={draw=none},
+    xticklabel={\small linear},
+    xticklabel style={red!70, yshift=-8pt},
+  },
+]
+\addplot[
+  xbar,
+  fill={leidenblue},
+  fill opacity=0.80,
+  draw=leidenblue!80!black,
+] coordinates {
+  (1.175,LOF)
+  (0.945,ECOD)
+  (0.947,COPOD)
+  (0.645,HBOS)
+  (0.307,IForest)
+};
+\end{axis}
+% "super-linear" annotation
+\end{tikzpicture}
+\end{center}
+\caption{Fitted row scaling exponent $\beta$ per algorithm from ~90 benchmark observations.}
+\label{fig:beta_chart}
+\end{figure}
+
+\subsection{Experiment 3: AutoML vs.\ Neural Architecture Search}\label{sec:autonn_comparison}
+
+To validate the choice of classical PyOD algorithms over neural network detectors, both approaches were run on the same five-city dataset, same preprocessing, and same unsupervised objective. Neither sees anomaly labels at any point.
+
+\begin{itemize}
+  \item \textbf{AutoML:} Optuna selects among IForest, LOF, ECOD, HBOS, and COPOD with 25 trials per column.
+  \item \textbf{Auto-NN:} Optuna performs neural architecture search (NAS) purely over neural network models --- Autoencoder (AE) and Variational Autoencoder (VAE) --- varying hidden layer count, width, activation function, learning rate, epoch count, and batch size, with 25 trials per column (matching AutoML for a direct comparison). One-Class SVM is intentionally excluded because it is not a neural network.
+\end{itemize}
+
+\subsubsection{Detection Results}
+
+Table~\ref{tab:autonn_summary} summarises the outcome. AutoML scored higher in 29 of 30 univariate cases and won decisively (margin $> 0.02$) in 27 of those 30. The three near-ties are: London surface pressure (AutoML 0.955 vs.\ Auto-NN 0.935, margin 0.020), New York surface pressure (AutoML 0.934 vs.\ Auto-NN 0.942, where Auto-NN leads by 0.008), and Tokyo temperature (AutoML 0.038 vs.\ Auto-NN 0.027, margin 0.011 with both models scoring very low). Surface pressure is the column where neural reconstruction is most competitive, because its tight near-Gaussian distribution makes reconstruction error a relatively reliable anomaly score. The Tokyo temperature near-tie is not a genuine win for either approach --- both score below 0.04 on a column where precipitation-like noise makes any unsupervised model unreliable. In the remaining 27 cases AutoML is decisively ahead, and it runs 6.8$\times$ faster on the same compute budget (same 25 trials).
+
+
+\begin{table}[H]
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Metric & AutoML & Auto-NN (AE/VAE) \\
+\midrule
+Mean F2 (univariate)        & \textbf{0.683} & 0.167 \\
+Mean Recall                 & \textbf{0.765} & 0.196 \\
+Mean Precision              & \textbf{0.618} & 0.153 \\
+Mean total time / column    & \textbf{4.1 s} & 28.2 s \\
+\bottomrule
+\end{tabular}
+\end{center}
+\caption{AutoML vs.\ Auto-NN aggregate results across 5 cities $\times$ 6 columns.}
+\label{tab:autonn_summary}
+\end{table}
+
+Table~\ref{tab:autonn_full} shows the full per-city, per-column breakdown with measured search time for each approach.
+
+\begin{table}[H]
+\begin{center}
+{\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l l c r r c r r@{}}
+\toprule
+City & Column
+  & \multicolumn{3}{c}{AutoML}
+  & \multicolumn{3}{c}{Auto-NN} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}
+  &  & Model & F2 & Time (s) & Model & F2 & Time (s) \\
+\midrule
+Amsterdam & App.\ Temp.  & LOF  & 0.418 &  1.5 & AE  & 0.006 & 25.9 \\
+Amsterdam & Precip.      & LOF  & 0.201 &  7.0 & VAE & 0.000 & 27.8 \\
+Amsterdam & Soil Moist.  & LOF  & 0.928 &  1.4 & VAE & 0.174 & 20.5 \\
+Amsterdam & Soil Temp.   & LOF  & 0.961 &  1.4 & AE  & 0.044 & 20.3 \\
+Amsterdam & Pressure     & ECOD & 0.928 &  1.1 & VAE & 0.882 & 31.6 \\
+Amsterdam & Temp.\ 2m    & LOF  & 0.668 &  2.6 & VAE & 0.027 & 40.1 \\
+\midrule
+London    & App.\ Temp.  & LOF  & 0.855 &  1.4 & VAE & 0.024 & 20.1 \\
+London    & Precip.      & LOF  & 0.115 &  7.5 & VAE & 0.014 & 25.5 \\
+London    & Soil Moist.  & LOF  & 0.985 &  1.4 & AE  & 0.044 & 28.6 \\
+London    & Soil Temp.   & LOF  & 0.936 &  1.4 & AE  & 0.021 & 18.3 \\
+London    & Pressure     & ECOD & 0.955 &  1.1 & VAE & 0.935 & 32.6 \\
+London    & Temp.\ 2m    & LOF  & 0.137 &  4.3 & AE  & 0.010 & 18.6 \\
+\midrule
+New York  & App.\ Temp.  & LOF  & 0.768 &  2.6 & VAE & 0.000 & 34.5 \\
+New York  & Precip.      & LOF  & 0.154 &  8.0 & VAE & 0.016 & 23.9 \\
+New York  & Soil Moist.  & LOF  & 0.997 &  1.4 & AE  & 0.029 & 22.6 \\
+New York  & Soil Temp.   & LOF  & 0.787 &  1.5 & AE  & 0.043 & 21.2 \\
+New York  & Pressure     & ECOD & 0.934 &  1.1 & AE  & 0.942 & 25.6 \\
+New York  & Temp.\ 2m    & LOF  & 0.792 &  4.5 & AE  & 0.022 & 20.7 \\
+\midrule
+Paris     & App.\ Temp.  & LOF  & 0.833 &  1.4 & AE  & 0.012 & 27.7 \\
+Paris     & Precip.      & LOF  & 0.157 &  7.7 & VAE & 0.022 & 29.2 \\
+Paris     & Soil Moist.  & LOF  & 0.949 &  4.3 & VAE & 0.030 & 42.1 \\
+Paris     & Soil Temp.   & LOF  & 0.941 &  1.4 & VAE & 0.041 & 19.6 \\
+Paris     & Pressure     & HBOS & 0.944 &  1.1 & AE  & 0.676 & 37.1 \\
+Paris     & Temp.\ 2m    & LOF  & 0.259 &  5.1 & AE  & 0.012 & 17.9 \\
+\midrule
+Tokyo     & App.\ Temp.  & LOF  & 0.898 &  1.4 & AE  & 0.024 & 29.0 \\
+Tokyo     & Precip.      & LOF  & 0.130 &  7.8 & AE  & 0.013 & 19.9 \\
+Tokyo     & Soil Moist.  & LOF  & 0.973 &  1.4 & AE  & 0.042 & 36.8 \\
+Tokyo     & Soil Temp.   & LOF  & 0.887 &  1.4 & VAE & 0.076 & 18.8 \\
+Tokyo     & Pressure     & ECOD & 0.968 &  1.1 & VAE & 0.789 & 28.9 \\
+Tokyo     & Temp.\ 2m    & COPOD& 0.038 &  2.4 & AE  & 0.027 & 35.2 \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\caption{Full detection results across all cities.}
+\label{tab:autonn_full}
+\end{table}
+
+The results confirm that AutoML outperforms neural architecture search in 29 of 30 univariate cases as for every other column, LOF and ECOD are structurally better suited. They compare each point to its local neighbourhood or tail probability rather than learning a global reconstruction mapping, which is exactly what is needed to detect point anomalies embedded in seasonal patterns. On top of the quality advantage, AutoML is 6.8$\times$ faster on the same trial budget, making it the unambiguous practical choice for tabular ETL anomaly detection.
+
+\subsection{Limitations of the Evaluation}
+
+The evaluation relies on synthetically injected anomalies. Real data quality problems may look different: they may be sustained drift rather than point anomalies, or they may affect multiple columns at once.
+
+All experiments use weather data, which has strong seasonal patterns and relatively stable distributions. The approach may behave differently on other types of data such as financial transactions or IoT sensor streams with abrupt regime changes.
+
+If anomalies already exist in the historical training data, the model will learn to treat them as normal. This is a fundamental limitation of unsupervised learning.
+
+The approach trains one model per column independently. Anomalies that only appear as correlated shifts across multiple columns simultaneously would not be detected by this design.
+
+
+% ============================================================
+\section{Conclusions and Further Research}\label{sec:conclusions}
+% ============================================================
+
+\subsection{Conclusions}
+
+The main question was whether ML-based anomaly detection can be added to an ETL ingestion layer practically, and whether it catches more problems than rule-based checks.
+
+On \textbf{detection}: ML-based profiling caught anomalies that rule-based checks failed to detect. For stable columns like surface pressure and soil moisture, recall reached 94--100\% across all five cities. For noisier columns like temperature, recall was 67--79\% in the better-performing cities. Rule-based checks scored 0\% on the same injected anomalies. Automated model selection with Optuna scored higher than a pure neural architecture search baseline while running 6.8$\times$ faster. LOF was selected most often. ECOD won on surface pressure in 4 out of 5 cities, demonstrating particularly efficient performance on columns with tight, predictable distributions.
+
+On \textbf{overhead}: The system runs as a working pipeline on AWS. Adding the ML detection step to the Airflow DAG required few changes. The built functional Adaptive Profiling library, help users to evaluate whether this framework fits their usecase and cost worthy or not based on their data. One time training or scheduled batch training is now simple possible by a a single line configuration on any column. 
+
+On \textbf{shift-left}: Catching anomalies at ingestion stops bad data before it reaches any downstream transformation or report. Fixing problems at the source is cheaper than cleaning them up later.
+
+The most important practical conclusion is that rule-based and ML-based checks are complementary. Rules handle obvious violations quickly and interpretably. ML-based detection adds a statistical layer for subtle anomalies that no rule would catch.
+
+\subsection{Further Research}
+
+Testing on datasets from different domains (finance, IoT, e-commerce) would show how well the approach generalises beyond weather data.
+
+The evaluation used point anomalies in individual columns. Extending the system to detect joint anomalies (shifts that only appear as correlations across multiple columns) would broaden its applicability.
+
+The current system trains on a schedule and reuses the model until the next retraining. Adding automatic drift detection and retraining triggers when distribution shift is detected would make the system more robust in production.
+
+Adding explanations for why a record was flagged upon upstream source elaboration would help operators understand and improve monitoring systems.
+
+\bibliographystyle{plain}
+\bibliography{bibliography}
+\addcontentsline{toc}{section}{References}
+
+\end{document}
