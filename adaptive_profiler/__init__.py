@@ -14,19 +14,31 @@ Quick start
 >>>
 >>> # Rule-based quality checks only (no ML)
 >>> violations = profiler.check_quality(df=new_df)
+
+Cost projection before production deployment
+---------------------------------------------
+>>> from adaptive_profiler import ScalingBenchmark
+>>>
+>>> bench = ScalingBenchmark(df, columns=["temperature_2m", "pressure"])
+>>> bench.run(quick=True)   # benchmark a small grid (~1–2 min)
+>>> bench.fit()             # fit T(n, m, k) = α · n^β · m^δ · k^γ
+>>> print(bench.report(target_n=100_000, m=6, k=25))
+>>> t = bench.predict(n=100_000, m=6, k=25)
 """
 
-from .models import SUPPORTED_MODELS
+from .config import ColumnChecks, ColumnConfig, ModelStoreConfig, ProfilerConfig, TrainingConfig
+from .detection import SUPPORTED_MODELS, TrainingResult
 from .profiler import Profiler
+from .projection import ScalingBenchmark
 from .quality import QualityViolation, check_dataframe, quality_summary
-from .schema import ColumnConfig, ColumnChecks, ModelStoreConfig, ProfilerConfig, TrainingConfig
-from .store import ArtifactStore, LocalStore, S3Store, make_store
-from .trainer import TrainingResult
+from .storage import ArtifactStore, LocalStore, S3Store, make_store
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     # Main entry point
     "Profiler",
+    # Cost projection
+    "ScalingBenchmark",
     # Config / schema
     "ProfilerConfig",
     "ColumnConfig",

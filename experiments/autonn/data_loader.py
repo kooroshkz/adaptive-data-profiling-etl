@@ -11,7 +11,7 @@ from nn_configs import FEATURE_COLUMNS
 
 
 def _load_env_fallback() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     env_path = repo_root / "airflow" / ".env"
     if not env_path.exists():
         return
@@ -63,7 +63,7 @@ def load_city_data_from_local(
     start_date: str | None,
     end_date: str | None,
 ) -> pd.DataFrame:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     city_dir = repo_root / "airflow" / "data" / "raw" / f"city={city}"
     candidates = sorted(city_dir.glob("hourly_*.parquet"))
     if not candidates:

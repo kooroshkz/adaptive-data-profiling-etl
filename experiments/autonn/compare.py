@@ -4,8 +4,8 @@
 Data sources used:
   - experiments/automl/artifacts/<latest>/summary_metrics.csv   → AutoML detection metrics
   - mlruns/807690575785611194/*/meta.yaml                       → Actual AutoML wall-clock timing
-  - autonn_experiment/artifacts/<latest>/summary_metrics.csv → NN detection metrics + timing
-  - autonn_experiment/artifacts/automl_per_trial_timing.csv → Per-algorithm benchmark times
+  - experiments/autonn/artifacts/<latest>/summary_metrics.csv → NN detection metrics + timing
+  - experiments/autonn/artifacts/automl_per_trial_timing.csv → Per-algorithm benchmark times
 
 Usage:
     python compare.py
@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 AUTOML_ARTIFACTS = REPO_ROOT / "experiments" / "automl" / "artifacts"
 MLRUNS_DIR = REPO_ROOT / "mlruns" / "807690575785611194"
 NN_ARTIFACTS = Path(__file__).parent / "artifacts"

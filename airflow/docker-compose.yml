@@ -40,6 +40,8 @@ x-airflow-common:
     - ./scripts:/opt/airflow/scripts
     - ./data:/opt/airflow/data
     - ../data:/opt/airflow/project-data
+    - ../adaptive_profiler:/opt/adaptive_profiler
+    - ../profiling_schema.yml:/opt/profiling_schema.yml
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on

@@ -36,25 +36,25 @@ def _build_model(model_name: str, params: dict[str, Any]):
     if model_name == "IForest":
         return IForest(
             contamination=params["contamination"],
-            n_estimators=params["n_estimators"],
-            max_samples=params["max_samples"],
+            n_estimators=params.get("n_estimators", 100),
+            max_samples=params.get("max_samples", "auto"),
             random_state=42,
             n_jobs=-1,
         )
     if model_name == "LOF":
         return LOF(
             contamination=params["contamination"],
-            n_neighbors=params["n_neighbors"],
-            leaf_size=params["leaf_size"],
+            n_neighbors=params.get("n_neighbors", 20),
+            leaf_size=params.get("leaf_size", 30),
             metric="minkowski",
             p=2,
         )
     if model_name == "HBOS":
         return HBOS(
             contamination=params["contamination"],
-            n_bins=params["n_bins"],
-            alpha=params["alpha"],
-            tol=params["tol"],
+            n_bins=params.get("n_bins", 10),
+            alpha=params.get("alpha", 0.1),
+            tol=params.get("tol", 0.5),
         )
     if model_name == "COPOD":
         return COPOD(contamination=params["contamination"])

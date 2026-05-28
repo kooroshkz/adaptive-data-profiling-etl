@@ -8,10 +8,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .config import ColumnConfig, ProfilerConfig
+from .detection import TrainingResult, train_column
 from .quality import check_dataframe, quality_summary
-from .schema import ColumnConfig, ProfilerConfig
-from .store import ArtifactStore, make_store
-from .trainer import TrainingResult, train_column
+from .storage import ArtifactStore, make_store
 
 
 class Profiler:
@@ -82,6 +82,11 @@ class Profiler:
         List of :class:`~adaptive_profiler.trainer.TrainingResult`, one per
         ``automl: true`` column.
         """
+        # ── Apply configurable training window ────────────────────────────────
+        window = self._config.training.window_size
+        if window is not None and len(df) > window:
+            df = df.iloc[-window:].reset_index(drop=True)
+
         results: list[TrainingResult] = []
         for col_cfg in self._config.automl_columns:
             result, artifact, metadata = train_column(
@@ -162,6 +167,17 @@ class Profiler:
                     automl_scores = model.decision_function(X_proc).astype(float)
                 except Exception as exc:
                     print(f"[WARN] adaptive_profiler: inference failed for {partition_key}/{col}: {exc}")
+
+            # ── Per-column flag threshold override ───────────────────────────
+            # When flag_threshold is set in the schema, use the raw anomaly
+            # score rather than PyOD's contamination-based binary prediction.
+            # This lets engineers tune sensitivity on a validation split without
+            # retraining the model.
+            if (
+                col_cfg.flag_threshold is not None
+                and automl_scores is not None
+            ):
+                automl_flags = (automl_scores > col_cfg.flag_threshold).astype(int)
 
             # ── Rule-based checks ─────────────────────────────────────────────
             quality_issues = [

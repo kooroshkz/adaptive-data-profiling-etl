@@ -14,10 +14,13 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .models import _build_model, _create_study, _suggest_params
-from .schema import ColumnConfig, TrainingConfig
+from ..config.schema import ColumnConfig, TrainingConfig
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Public result type
+# ──────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class TrainingResult:
@@ -78,6 +81,73 @@ def _split(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Manual override helper
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _train_manual(
+    col: str,
+    partition_key: str,
+    model_name: str,
+    hyperparameters: dict[str, Any],
+    X: np.ndarray,
+) -> tuple["TrainingResult", dict[str, Any] | None, dict[str, Any] | None]:
+    """Build and fit a model directly from schema-specified name + hyperparameters.
+
+    Called when ``col_cfg.model`` is set, bypassing the Optuna search entirely.
+    The engineer is responsible for supplying valid hyperparameters; any key
+    not recognised by the chosen model is silently ignored by ``_build_model``.
+
+    ``contamination`` defaults to 0.05 if omitted from ``hyperparameters``.
+    """
+    from .models import SUPPORTED_MODELS
+
+    if model_name not in SUPPORTED_MODELS:
+        return (
+            TrainingResult(
+                partition_key=partition_key,
+                column=col,
+                model_name="",
+                n_train_rows=0,
+                best_val_f2=0.0,
+                n_trials=0,
+                skipped=True,
+                skip_reason=(
+                    f"unsupported model: {model_name!r}. "
+                    f"Supported: {SUPPORTED_MODELS}"
+                ),
+            ),
+            None,
+            None,
+        )
+
+    params: dict[str, Any] = {"contamination": 0.05, **hyperparameters}
+    preprocess = _build_preprocess()
+    model = _build_model(model_name, params)
+    model.fit(preprocess.fit_transform(X))
+
+    result = TrainingResult(
+        partition_key=partition_key,
+        column=col,
+        model_name=model_name,
+        n_train_rows=len(X),
+        best_val_f2=0.0,
+        n_trials=0,
+        label_available=False,
+    )
+    artifact: dict[str, Any] = {"preprocess": preprocess, "model": model}
+    metadata: dict[str, Any] = {
+        "model_name": model_name,
+        "params": params,
+        "n_train_rows": len(X),
+        "n_trials": 0,
+        "best_objective_value": 0.0,
+        "label_available": False,
+        "manual_override": True,
+    }
+    return result, artifact, metadata
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Public
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -129,6 +199,16 @@ def train_column(
     n_valid = int(np.isfinite(X).sum())
     if n_valid < training_cfg.min_train_rows:
         return _skip(f"only {n_valid} non-null rows (min={training_cfg.min_train_rows})")
+
+    # ── Manual model override: skip Optuna, use specified model + params ──────
+    if col_cfg.model:
+        return _train_manual(
+            col=col,
+            partition_key=partition_key,
+            model_name=col_cfg.model,
+            hyperparameters=col_cfg.hyperparameters,
+            X=X,
+        )
 
     has_labels = "y_true" in df.columns
     y = df["y_true"].to_numpy(dtype=int) if has_labels else np.zeros(len(X), dtype=int)

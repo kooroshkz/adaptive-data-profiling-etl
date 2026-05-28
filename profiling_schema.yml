@@ -1,23 +1,10 @@
 version: 1
-
-# ---------------------------------------------------------------------------
-# Model store — where trained artifacts are persisted.
-# Each model is stored at:
-#   s3: {prefix}/partition={partition_key}/col={column}/latest.pkl
-#   local: {local_dir}/partition={partition_key}/col={column}/latest.pkl
-# ---------------------------------------------------------------------------
 model_store:
   backend: s3                           # s3 | local
   bucket: weather-data-koorosh-thesis   # required when backend=s3
   prefix: models/v1
   # local_dir: ./models                 # required when backend=local
 
-# ---------------------------------------------------------------------------
-# AutoML hyperparameter optimisation settings.
-# Optuna selects the best PyOD model and parameters by maximising F2 on a
-# held-out validation split (uses synthetic anomaly labels when available,
-# falls back to score-variance proxy when labels are absent).
-# ---------------------------------------------------------------------------
 training:
   n_trials: 30        # Optuna trials per column
   seed: 42

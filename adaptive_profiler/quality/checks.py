@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from .schema import ColumnConfig
+from ..config.schema import ColumnConfig
 
 
 @dataclass

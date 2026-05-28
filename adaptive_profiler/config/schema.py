@@ -40,6 +40,14 @@ class ColumnChecks:
                 lo, hi = self.range
                 if numeric < lo or numeric > hi:
                     issues.append(f"out_of_range([{lo}, {hi}])")
+        elif self.range is not None:
+            try:
+                numeric = float(value)
+                lo, hi = self.range
+                if numeric < lo or numeric > hi:
+                    issues.append(f"out_of_range([{lo}, {hi}])")
+            except (TypeError, ValueError):
+                pass
 
         return issues
 
@@ -53,7 +61,7 @@ class ColumnChecks:
         )
 
 
-@dataclass(frozen=True)
+@dataclass
 class ColumnConfig:
     """Schema definition for a single column."""
 
@@ -62,13 +70,54 @@ class ColumnConfig:
     automl: bool = False
     checks: ColumnChecks = field(default_factory=ColumnChecks)
 
+    # ── Optional ML tuning knobs ──────────────────────────────────────────────
+
+    flag_threshold: float | None = None
+    """Post-hoc anomaly-score threshold for binary flagging.
+
+    When set, a row is flagged if its raw ``decision_function`` score exceeds
+    this value — overriding the contamination-based PyOD threshold.  Set per
+    column to tune sensitivity without retraining::
+
+        columns:
+          - name: temperature_2m
+            automl: true
+            flag_threshold: 0.42   # tune on a validation split
+    """
+
+    model: str | None = None
+    """Fix the detector algorithm and skip Optuna search.
+
+    Must be one of the keys in ``SUPPORTED_MODELS`` (IForest, LOF, HBOS,
+    COPOD, ECOD).  When set, ``hyperparameters`` are used directly::
+
+        columns:
+          - name: surface_pressure
+            automl: true
+            model: LOF
+            hyperparameters:
+              n_neighbors: 30
+              contamination: 0.02
+    """
+
+    hyperparameters: dict = field(default_factory=dict)
+    """Fixed hyperparameters used when ``model`` is set (ignored otherwise)."""
+
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "ColumnConfig":
+        raw_hp = d.get("hyperparameters")
         return cls(
             name=d["name"],
             description=d.get("description", ""),
             automl=bool(d.get("automl", False)),
             checks=ColumnChecks.from_dict(d.get("checks", {})),
+            flag_threshold=(
+                float(d["flag_threshold"])
+                if d.get("flag_threshold") is not None
+                else None
+            ),
+            model=d.get("model") or None,
+            hyperparameters=dict(raw_hp) if raw_hp else {},
         )
 
 
@@ -98,13 +147,28 @@ class TrainingConfig:
     n_trials: int = 30
     seed: int = 42
     min_train_rows: int = 100
+    window_size: int | None = None
+    """Number of most-recent rows to use for training.
+
+    When set, the profiler trains on the last ``window_size`` rows of the
+    provided DataFrame rather than the full history.  This keeps retraining
+    fast and allows gradual source drift to be picked up automatically on
+    the next scheduled run::
+
+        training:
+          n_trials: 25
+          min_train_rows: 500
+          window_size: 5000   # train on the most recent 5 000 rows only
+    """
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "TrainingConfig":
+        raw_ws = d.get("window_size")
         return cls(
             n_trials=int(d.get("n_trials", 30)),
             seed=int(d.get("seed", 42)),
             min_train_rows=int(d.get("min_train_rows", 100)),
+            window_size=int(raw_ws) if raw_ws is not None else None,
         )
 
 

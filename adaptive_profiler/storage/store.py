@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .schema import ModelStoreConfig
+from ..config.schema import ModelStoreConfig
 
 # Artifact key layout (Hive-style partitioning keeps it queryable with DuckDB/Athena):
 #   partition={partition_key}/col={column}/latest.pkl
