@@ -1,3 +1,6 @@
+# Profiler library (source: https://github.com/kooroshkz/adaptive-profiler)
+adaptive-profiler>=0.2.0
+
 # Core ETL Dependencies
 # Python 3.12 compatible versions
 apache-airflow==2.10.3        # Workflow orchestration (supports Python 3.12)

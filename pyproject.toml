@@ -1,52 +1,31 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "adaptive-profiler"
-version = "0.1.0"
-description = "AutoML anomaly detection and schema-driven quality profiling for tabular time-series data"
-authors = [{ name = "Koorosh Komeilizadeh", email = "kkomeilizadeh@gmail.com" }]
-readme = "README.md"
-license = { text = "MIT" }
+name = "adaptive-data-profiling-etl"
+version = "1.0.0"
+description = "Weather data ETL pipeline with AutoML anomaly detection"
+authors = [{ name = "Koorosh Komeili Zadeh", email = "kkomeilizadeh@gmail.com" }]
 requires-python = ">=3.10"
-keywords = ["anomaly-detection", "data-quality", "automl", "pyod", "optuna", "mlops"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
+
 dependencies = [
-    "pyod>=1.1",
-    "optuna>=3.0",
-    "scikit-learn>=1.3",
+    "adaptive-profiler>=0.2.0",   # https://github.com/kooroshkz/adaptive-profiler
+    "duckdb>=1.1",
     "pandas>=2.0",
-    "numpy>=1.24",
-    "pyyaml>=6.0",
     "pyarrow>=12.0",
+    "pyyaml>=6.0",
+    "requests>=2.32",
 ]
 
 [project.optional-dependencies]
-s3 = ["boto3>=1.26", "botocore>=1.29"]
-dev = ["pytest>=7.0", "pytest-cov", "ruff", "mypy", "boto3>=1.26"]
+s3  = ["boto3>=1.26"]
+dev = ["pytest>=7.0", "pytest-cov", "ruff"]
 
 [project.urls]
 Homepage = "https://github.com/kooroshkz/adaptive-data-profiling-etl"
-
-[tool.setuptools.packages.find]
-include = ["adaptive_profiler*"]
+"Profiler library" = "https://github.com/kooroshkz/adaptive-profiler"
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-
-[tool.mypy]
-python_version = "3.10"
-strict = false
-ignore_missing_imports = true

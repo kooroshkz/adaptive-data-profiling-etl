@@ -46,6 +46,7 @@ DAILY_ANOMALY_ROWS_PER_SELECTED_CITY = 1
 install_deps = BashOperator(
     task_id='install_dependencies',
     bash_command='''
+    pip install adaptive-profiler --quiet
     pip install pandas pyarrow requests boto3 duckdb --quiet
     ''',
     dag=dag,

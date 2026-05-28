@@ -38,7 +38,8 @@ dag = DAG(
 install_deps = BashOperator(
     task_id="install_dependencies",
     bash_command="""
-    pip install pyod optuna scikit-learn boto3 duckdb pyyaml pandas pyarrow --quiet
+    pip install adaptive-profiler --quiet
+    pip install boto3 duckdb pandas pyarrow --quiet
     """,
     dag=dag,
 )
