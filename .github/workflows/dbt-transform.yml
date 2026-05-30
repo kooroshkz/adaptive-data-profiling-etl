@@ -30,7 +30,7 @@ jobs:
         
     - name: Install dbt and dependencies
       run: |
-        pip install dbt-core dbt-duckdb boto3 pyarrow pandas duckdb==1.1.3
+        pip install dbt-core dbt-duckdb boto3 pyarrow pandas duckdb==1.5.2
         
     - name: Configure AWS credentials
       run: |
