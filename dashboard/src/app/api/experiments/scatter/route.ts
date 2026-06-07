@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
-
-const ARTIFACTS_DIR = path.resolve(process.cwd(), "../experiments/automl/artifacts");
+import { artifactsDir } from "../domain";
 
 export type ExpScatterPoint = {
   time_ms: number;
@@ -39,6 +38,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid parameter" }, { status: 400 });
     }
 
+    const ARTIFACTS_DIR = artifactsDir(params.get("domain"));
     const filename = `predictions_${city}_${scope}_${column}.csv`;
     const filePath = path.join(ARTIFACTS_DIR, runId, filename);
 

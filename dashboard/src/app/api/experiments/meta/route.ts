@@ -3,19 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { artifactsDir } from "../domain";
 
-export type SummaryRow = {
-  city: string;
-  scope: string;
-  model_name: string;
-  target_column: string;
-  precision: number;
-  recall: number;
-  f1: number;
-  f2: number;
-  n_rows: number;
-  n_positive_true: number;
-  n_positive_pred: number;
-};
+/**
+ * Derives the city/partition list and the numeric (univariate) column list for
+ * a given experiment run directly from its summary_metrics.csv. This lets the
+ * dashboard populate the City and Column selectors for any domain without a
+ * domain-specific metadata endpoint.
+ */
 
 function parseCSV(content: string): Record<string, string>[] {
   const lines = content.trim().split("\n").filter(Boolean);
@@ -33,8 +26,6 @@ export async function GET(request: NextRequest) {
     if (!runId) {
       return NextResponse.json({ error: "run parameter is required" }, { status: 400 });
     }
-
-    // Prevent path traversal
     if (runId.includes("..") || runId.includes("/")) {
       return NextResponse.json({ error: "Invalid run id" }, { status: 400 });
     }
@@ -42,27 +33,21 @@ export async function GET(request: NextRequest) {
     const ARTIFACTS_DIR = artifactsDir(request.nextUrl.searchParams.get("domain"));
     const summaryPath = path.join(ARTIFACTS_DIR, runId, "summary_metrics.csv");
     if (!fs.existsSync(summaryPath)) {
-      return NextResponse.json({ error: "Run not found" }, { status: 404 });
+      return NextResponse.json({ cities: [], numericColumns: [] });
     }
 
-    const content = fs.readFileSync(summaryPath, "utf8");
-    const rawRows = parseCSV(content);
+    const rows = parseCSV(fs.readFileSync(summaryPath, "utf8"));
+    const cities = Array.from(new Set(rows.map((r) => r.city).filter(Boolean)));
+    const numericColumns = Array.from(
+      new Set(
+        rows
+          .filter((r) => r.scope === "univariate")
+          .map((r) => r.target_column)
+          .filter((c) => c && c !== "ALL_FEATURES"),
+      ),
+    );
 
-    const rows: SummaryRow[] = rawRows.map((r) => ({
-      city: r.city ?? "",
-      scope: r.scope ?? "",
-      model_name: r.model_name ?? "",
-      target_column: r.target_column ?? "",
-      precision: parseFloat(r.precision ?? "0"),
-      recall: parseFloat(r.recall ?? "0"),
-      f1: parseFloat(r.f1 ?? "0"),
-      f2: parseFloat(r.f2 ?? "0"),
-      n_rows: parseInt(r.n_rows ?? "0", 10),
-      n_positive_true: parseInt(r.n_positive_true ?? "0", 10),
-      n_positive_pred: parseInt(r.n_positive_pred ?? "0", 10),
-    }));
-
-    return NextResponse.json({ rows });
+    return NextResponse.json({ cities, numericColumns });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },

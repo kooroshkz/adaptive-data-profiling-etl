@@ -91,6 +91,12 @@ const scopeLabels: Record<Scope, string> = {
   multivariate: "Multivariate (all features)",
 };
 
+type Domain = "weather" | "electricity";
+const domainLabels: Record<Domain, string> = {
+  weather: "Weather (Open-Meteo · 5 cities)",
+  electricity: "Electricity (Elexon · GB demand)",
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(v: number) {
@@ -126,6 +132,9 @@ function expToScatterPoint(p: ExpScatterPoint, cityId: string, targetColumn: str
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ExperimentsPage() {
+  // ── Domain (which experiment family to view) ──────────────────────────
+  const [domain, setDomain] = useState<Domain>("weather");
+
   // ── Dataset controls ──────────────────────────────────────────────────
   const [sourceMode, setSourceMode] = useState<SourceMode>("raw_hourly");
   const [dailyVariant, setDailyVariant] = useState<DailyVariant>("with_anomalies");
@@ -139,6 +148,8 @@ export default function ExperimentsPage() {
   const [selectedRun, setSelectedRun] = useState<string>("");
   const [scope, setScope] = useState<Scope>("univariate");
   const [summaryRows, setSummaryRows] = useState<SummaryRow[]>([]);
+  // Electricity-only: overlay non-synthetic rows the model flagged (false positives)
+  const [showExtraFlags, setShowExtraFlags] = useState(false);
 
   // ── Experiment scatter (artifact-sourced, always aligned with table) ──
   const [expScatterPoints, setExpScatterPoints] = useState<ExpScatterPoint[]>([]);
@@ -162,39 +173,53 @@ export default function ExperimentsPage() {
         ? "daily_with_anomalies"
         : "daily_without_anomalies";
 
-  // ── Load runs once ────────────────────────────────────────────────────
+  // ── Load runs (per domain) ────────────────────────────────────────────
   useEffect(() => {
-    fetch("/api/experiments/runs")
+    fetch(`/api/experiments/runs?domain=${domain}`)
       .then((r) => r.json())
       .then((d: { runs?: RunInfo[] }) => {
         const list = d.runs ?? [];
         setRuns(list);
-        if (list.length) setSelectedRun(list[0].id);
+        setSelectedRun(list[0]?.id ?? "");
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => { setRuns([]); setSelectedRun(""); });
+  }, [domain]);
 
-  // ── Load metadata ─────────────────────────────────────────────────────
+  // ── Load metadata (weather: API · electricity: derived from run) ──────
   useEffect(() => {
     let cancelled = false;
     setIsLoadingMeta(true);
     setDataError("");
-    fetch(`/api/weather/metadata?dataset=${dataset}`)
+
+    const url =
+      domain === "electricity"
+        ? (selectedRun ? `/api/experiments/meta?run=${selectedRun}&domain=electricity` : null)
+        : `/api/weather/metadata?dataset=${dataset}`;
+
+    if (!url) { setIsLoadingMeta(false); return; }
+
+    fetch(url)
       .then((r) => r.json())
       .then((p: MetaResponse & { error?: string }) => {
         if (cancelled) return;
         if (p.error) throw new Error(p.error);
         setMeta(p);
         setCity(p.cities[0] ?? "");
-        setYColumn(p.numericColumns.includes("temperature_2m") ? "temperature_2m" : (p.numericColumns[1] ?? p.numericColumns[0] ?? ""));
+        const cols = p.numericColumns ?? [];
+        const preferred =
+          domain === "electricity"
+            ? (cols[0] ?? "")
+            : (cols.includes("temperature_2m") ? "temperature_2m" : (cols[1] ?? cols[0] ?? ""));
+        setYColumn(preferred);
       })
       .catch((e) => { if (!cancelled) { setDataError(e.message); setMeta(null); } })
       .finally(() => { if (!cancelled) setIsLoadingMeta(false); });
     return () => { cancelled = true; };
-  }, [dataset]);
+  }, [domain, dataset, selectedRun]);
 
   // ── Load weather scatter (used only when no experiment run selected) ──
   useEffect(() => {
+    if (domain !== "weather") return; // electricity has no data-quality fallback
     if (selectedRun) return; // experiment scatter takes over when a run is selected
     if (!meta || !yColumn) return;
     if (dataset.startsWith("daily_") && !city) return;
@@ -226,7 +251,7 @@ export default function ExperimentsPage() {
     let cancelled = false;
     setIsLoadingExpScatter(true);
     const col = scope === "multivariate" ? "ALL_FEATURES" : yColumn;
-    fetch(`/api/experiments/scatter?run=${selectedRun}&city=${city}&scope=${scope}&column=${col}`)
+    fetch(`/api/experiments/scatter?run=${selectedRun}&city=${city}&scope=${scope}&column=${col}&domain=${domain}`)
       .then((r) => r.json())
       .then((d: { points?: ExpScatterPoint[]; hasYValue?: boolean }) => {
         if (cancelled) return;
@@ -240,7 +265,7 @@ export default function ExperimentsPage() {
       .catch(() => { if (!cancelled) setExpScatterPoints([]); })
       .finally(() => { if (!cancelled) setIsLoadingExpScatter(false); });
     return () => { cancelled = true; };
-  }, [selectedRun, city, scope, yColumn]);
+  }, [selectedRun, city, scope, yColumn, domain]);
 
   // ── Load experiment summary ───────────────────────────────────────────
   useEffect(() => {
@@ -248,7 +273,7 @@ export default function ExperimentsPage() {
     let cancelled = false;
     setIsLoadingExp(true);
     setExpError("");
-    fetch(`/api/experiments/summary?run=${selectedRun}`)
+    fetch(`/api/experiments/summary?run=${selectedRun}&domain=${domain}`)
       .then((r) => r.json())
       .then((summary: { rows?: SummaryRow[]; error?: string }) => {
         if (cancelled) return;
@@ -258,13 +283,14 @@ export default function ExperimentsPage() {
       .catch((e) => { if (!cancelled) setExpError(e.message); })
       .finally(() => { if (!cancelled) setIsLoadingExp(false); });
     return () => { cancelled = true; };
-  }, [selectedRun]);
+  }, [selectedRun, domain]);
 
   // ── Categorise scatter points ─────────────────────────────────────────
   // When a run is selected: use experiment scatter → perfectly aligned with table.
   // Fallback (no run): use weather API scatter with no overlay.
-  const { normalPts, detectedPts, missedPts } = useMemo(() => {
+  const { normalPts, extraFlagPts, detectedPts, missedPts } = useMemo(() => {
     const normal: ScatterPoint[] = [];
+    const extra: ScatterPoint[] = [];   // clean rows the model flagged (false positives)
     const detected: ScatterPoint[] = [];
     const missed: ScatterPoint[] = [];
 
@@ -272,43 +298,56 @@ export default function ExperimentsPage() {
       const col = scope === "multivariate" ? "ALL_FEATURES" : yColumn;
       expScatterPoints.forEach((p) => {
         const sp = expToScatterPoint(p, city, col);
-        if (p.y_true === 0) normal.push(sp);
+        if (p.y_true === 0) (p.y_pred === 1 ? extra : normal).push(sp);
         else if (p.y_pred === 1) detected.push(sp);
         else missed.push(sp);
       });
-      return { normalPts: normal, detectedPts: detected, missedPts: missed };
+      return { normalPts: normal, extraFlagPts: extra, detectedPts: detected, missedPts: missed };
     }
 
     // Fallback: no predictions available, show raw scatter without overlay
     (scatterData?.points ?? []).forEach((p) => normal.push(p));
-    return { normalPts: normal, detectedPts: [], missedPts: [] };
+    return { normalPts: normal, extraFlagPts: [] as ScatterPoint[], detectedPts: [], missedPts: [] };
   }, [expScatterPoints, scatterData, city, yColumn, scope]);
+
+  // Whether the non-synthetic false-positive overlay is active (electricity only)
+  const showExtra = domain === "electricity" && showExtraFlags && expScatterPoints.length > 0;
 
   // ── Detection stats from experiment scatter ───────────────────────────
   const detectionStats = useMemo(() => {
     if (expScatterPoints.length === 0) return null;
     const tp = expScatterPoints.filter((p) => p.y_true === 1 && p.y_pred === 1).length;
     const fn = expScatterPoints.filter((p) => p.y_true === 1 && p.y_pred === 0).length;
-    return { tp, fn, total: expScatterPoints.length };
+    const fp = expScatterPoints.filter((p) => p.y_true === 0 && p.y_pred === 1).length;
+    const clean = expScatterPoints.filter((p) => p.y_true === 0).length;
+    return { tp, fn, fp, clean, total: expScatterPoints.length };
   }, [expScatterPoints]);
 
   // ── Shift distribution (detected vs missed per magnitude bucket) ──────
   const shiftDistribution = useMemo(() => {
     const anomalies = expScatterPoints.filter((p) => p.y_true === 1 && p.shift_pct > 0);
     if (anomalies.length === 0) return null;
-    // 2 % intervals up to 20 %, then a catch-all
     const buckets: { label: string; min: number; max: number }[] = [];
-    for (let i = 0; i < 20; i += 2) {
-      buckets.push({ label: `${i}–${i + 2}%`, min: i / 100, max: (i + 2) / 100 });
+    if (domain === "electricity") {
+      // Injected electricity shifts are drawn from 50–100% → 10 % buckets.
+      for (let i = 50; i < 100; i += 10) {
+        buckets.push({ label: `${i}–${i + 10}%`, min: i / 100, max: (i + 10) / 100 });
+      }
+      buckets.push({ label: "≥100%", min: 1.0, max: Infinity });
+    } else {
+      // Weather: 2 % intervals up to 20 %, then a catch-all.
+      for (let i = 0; i < 20; i += 2) {
+        buckets.push({ label: `${i}–${i + 2}%`, min: i / 100, max: (i + 2) / 100 });
+      }
+      buckets.push({ label: ">20%", min: 0.20, max: Infinity });
     }
-    buckets.push({ label: ">20%", min: 0.20, max: Infinity });
     return buckets.map((b) => {
       const inBucket = anomalies.filter((p) => p.shift_pct >= b.min && p.shift_pct < b.max);
       if (inBucket.length === 0) return null;
       const detected = inBucket.filter((p) => p.y_pred === 1).length;
       return { label: b.label, total: inBucket.length, detected, missed: inBucket.length - detected };
     }).filter(Boolean) as { label: string; total: number; detected: number; missed: number }[];
-  }, [expScatterPoints]);
+  }, [expScatterPoints, domain]);
 
   const shiftChartOption = useMemo((): EChartsOption => {
     if (!shiftDistribution || shiftDistribution.length === 0) return {};
@@ -398,7 +437,7 @@ export default function ExperimentsPage() {
           `<b>${p.cityId}</b>`,
           `time: ${fmtDateTime(p.x)}`,
           `${yColumn}: ${p.y.toFixed(3)}`,
-          `<b>Normal</b>`,
+          `<b>${showExtra && extraFlagPts.some((d) => d.x === p.x) ? "Extra flag (non-synthetic)" : "Normal"}</b>`,
         ].join("<br/>");
       }
       return [
@@ -412,7 +451,9 @@ export default function ExperimentsPage() {
     };
 
     const legendData = usingExpData
-      ? ["Normal", "Detected by AutoML", "Missed by AutoML"]
+      ? (showExtra
+          ? ["Normal", "Detected by AutoML", "Missed by AutoML", "Extra flags (non-synthetic)"]
+          : ["Normal", "Detected by AutoML", "Missed by AutoML"])
       : ["Normal"];
 
     return {
@@ -431,7 +472,7 @@ export default function ExperimentsPage() {
         { type: "slider", xAxisIndex: 0, filterMode: "none", height: 28, bottom: 14, borderColor: "#c9d7e4", handleSize: "95%", moveHandleSize: 4 },
       ],
       series: [
-        { name: "Normal", type: "scatter", symbolSize: 7, itemStyle: { color: COLORS.normal }, data: toData(normalPts), large: true },
+        { name: "Normal", type: "scatter", symbolSize: 7, itemStyle: { color: COLORS.normal }, data: toData(showExtra ? normalPts : [...normalPts, ...extraFlagPts]), large: true },
         {
           name: "Detected by AutoML",
           type: "scatter", symbolSize: 12,
@@ -444,10 +485,16 @@ export default function ExperimentsPage() {
           itemStyle: { color: COLORS.missed, borderColor: COLORS.missedBorder, borderWidth: 2.5 },
           data: toData(missedPts),
         },
+        {
+          name: "Extra flags (non-synthetic)",
+          type: "scatter", symbol: "diamond", symbolSize: 11,
+          itemStyle: { color: "#f59e0b", borderColor: "#b45309", borderWidth: 2 },
+          data: showExtra ? toData(extraFlagPts) : [],
+        },
       ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalPts, detectedPts, missedPts, yColumn, selectedRange, expScatterPoints.length]);
+  }, [normalPts, extraFlagPts, detectedPts, missedPts, showExtra, yColumn, selectedRange, expScatterPoints.length]);
 
   // ── Summary filtered to city ──────────────────────────────────────────
   const citySummary = useMemo(
@@ -540,7 +587,14 @@ export default function ExperimentsPage() {
         {/* Controls */}
         <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm backdrop-blur md:p-6">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-            <label className="control sm:col-span-2 xl:col-span-2">
+            <label className="control">
+              <span>Domain</span>
+              <select value={domain} onChange={(e) => setDomain(e.target.value as Domain)}>
+                {Object.entries(domainLabels).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            </label>
+
+            <label className="control sm:col-span-1 xl:col-span-1">
               <span>Experiment Run</span>
               <select value={selectedRun} onChange={(e) => setSelectedRun(e.target.value)} disabled={runs.length === 0} suppressHydrationWarning>
                 {runs.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
@@ -569,8 +623,8 @@ export default function ExperimentsPage() {
               </select>
             </label>
 
-            {/* Dataset selector only shown when no run selected (data quality browsing) */}
-            {!selectedRun && (
+            {/* Dataset selector only shown for the weather domain when no run selected (data quality browsing) */}
+            {domain === "weather" && !selectedRun && (
               <label className="control">
                 <span>Dataset</span>
                 <select value={sourceMode} onChange={(e) => setSourceMode(e.target.value as SourceMode)}>
@@ -578,7 +632,7 @@ export default function ExperimentsPage() {
                 </select>
               </label>
             )}
-            {!selectedRun && sourceMode === "daily" && (
+            {domain === "weather" && !selectedRun && sourceMode === "daily" && (
               <label className="control">
                 <span>Daily View</span>
                 <select value={dailyVariant} onChange={(e) => setDailyVariant(e.target.value as DailyVariant)}>
@@ -612,10 +666,22 @@ export default function ExperimentsPage() {
         <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm md:p-6">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-slate-800">Scatter Plot — AutoML Detection Overlay</h2>
-            <p className="text-xs text-slate-500">
-              {city || "all"} · Y={yColumn} · {scope}
-              {selectedRun ? ` · ${runs.find((r) => r.id === selectedRun)?.label ?? selectedRun}` : ""}
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              {domain === "electricity" && usingExpScatter && (
+                <button
+                  type="button"
+                  onClick={() => setShowExtraFlags((v) => !v)}
+                  className={`rounded-md border px-3 py-1 text-xs font-medium transition ${showExtraFlags ? "border-amber-400 bg-amber-100 text-amber-800" : "border-slate-300 bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+                  title="Overlay non-synthetic rows the model flagged (false positives). We cannot confirm these are real anomalies."
+                >
+                  {showExtraFlags ? "◆ " : "◇ "}Extra flags (non-synthetic){detectionStats ? ` · ${detectionStats.fp}` : ""}
+                </button>
+              )}
+              <p className="text-xs text-slate-500">
+                {city || "all"} · Y={yColumn} · {scope}
+                {selectedRun ? ` · ${runs.find((r) => r.id === selectedRun)?.label ?? selectedRun}` : ""}
+              </p>
+            </div>
           </div>
           {timeLabel && <p className="mb-2 text-xs text-slate-500">{timeLabel}</p>}
           {timeButtons.length > 0 && (
@@ -651,7 +717,7 @@ export default function ExperimentsPage() {
 
           {/* Detection outcome — only injected anomalies matter as ground truth */}
           {detectionStats && (
-            <div className="mb-6 grid grid-cols-2 gap-3">
+            <div className={`mb-6 grid grid-cols-2 gap-3 ${domain === "electricity" ? "md:grid-cols-3" : ""}`}>
               <MetricTile
                 label="Detected (TP)"
                 sub="Injected anomalies caught"
@@ -670,6 +736,17 @@ export default function ExperimentsPage() {
                 color="bg-indigo-50 border-indigo-200 text-indigo-900"
                 barColor="bg-indigo-400"
               />
+              {domain === "electricity" && (
+                <MetricTile
+                  label="Extra flags (FP)"
+                  sub="Non-synthetic rows flagged"
+                  value={detectionStats.fp}
+                  total={detectionStats.clean}
+                  ratioLabel="of clean rows"
+                  color="bg-amber-50 border-amber-200 text-amber-900"
+                  barColor="bg-amber-500"
+                />
+              )}
             </div>
           )}
 

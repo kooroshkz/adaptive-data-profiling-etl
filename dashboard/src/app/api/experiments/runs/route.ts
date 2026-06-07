@@ -1,16 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
-import path from "node:path";
-
-const ARTIFACTS_DIR = path.resolve(process.cwd(), "../experiments/automl/artifacts");
+import { artifactsDir } from "../domain";
 
 export type RunInfo = {
   id: string;
   label: string;
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const ARTIFACTS_DIR = artifactsDir(request.nextUrl.searchParams.get("domain"));
     if (!fs.existsSync(ARTIFACTS_DIR)) {
       return NextResponse.json({ runs: [] });
     }

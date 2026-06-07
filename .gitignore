@@ -42,8 +42,7 @@ weather_dbt/dbt_packages/
 weather_dbt/logs/
 
 # AutoML experiments
-experiments/automl/artifacts/
-experiments/autonn/artifacts/
+experiments/**/artifacts/
 experiments/data/automl/
 mlruns/
 
