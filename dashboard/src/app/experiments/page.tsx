@@ -463,7 +463,7 @@ export default function ExperimentsPage() {
       tooltip: { trigger: "item", borderColor: "#a5b4c7", backgroundColor: "#fff", textStyle: { color: "#20394a" }, formatter: tooltip },
       xAxis: {
         type: "time", name: "time", nameLocation: "middle", nameGap: 34,
-        axisLabel: { color: "#325163", formatter: (v: number) => fmtDate(v) },
+        axisLabel: { color: "#325163", formatter: (v: number) => fmtDate(v), hideOverlap: true },
         min: selectedRange?.from ?? undefined, max: selectedRange?.to ?? undefined,
       },
       yAxis: { type: "value", name: yColumn, nameLocation: "middle", nameGap: 46, axisLabel: { color: "#325163" } },

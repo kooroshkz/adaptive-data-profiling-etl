@@ -1,0 +1,67 @@
+\makeatletter
+\newcommand{\supervisor}[1]{\gdef\@supervisor{#1}}
+\newcommand{\@supervisor}{}
+\makeatother
+
+\makeatletter
+\newcommand{\secondsupervisor}[1]{\gdef\@secondsupervisor{#1}}
+\newcommand{\@secondsupervisor}{}
+\makeatother
+
+\makeatletter
+\newcommand{\studentnumber}[1]{\gdef\@studentnumber{#1}}
+\newcommand{\@studentnumber}{}
+\makeatother
+
+\makeatletter
+\newcommand{\thesistype}[1]{\gdef\@thesistype{#1}}
+\newcommand{\@thesistype}{}
+\makeatother
+
+\makeatletter
+\newcommand{\studyprogram}[1]{\gdef\@studyprogram{#1}}
+\newcommand{\@studyprogram}{}
+\makeatother
+
+% Redefine maketitle
+\makeatletter
+\renewcommand{\maketitle}{
+  \begin{titlepage}
+
+    \thispagestyle{empty}
+
+    \vspace{1cm}
+
+    \noindent
+    \includegraphics{logoleiden} \\
+    \vspace{1cm}
+    
+    % Title
+    \noindent {\Huge\bfseries \@title \par}
+
+    \vspace{2cm}
+
+    \noindent % Author
+    {\Large \@author ~(\@studentnumber) \par}
+
+    \vfill
+
+    \begin{large}
+
+    \noindent Supervisors:\\
+    \noindent { \@supervisor ~\& \@secondsupervisor \par}
+
+    \vspace*{2.8cm}
+    \noindent \textsc{\@thesistype -- \@studyprogram}
+
+    \vspace*{5mm}
+    \noindent Leiden Institute of Advanced Computer Science (LIACS) \\
+    \url{liacs.leidenuniv.nl}  \hfill {\large \@date \par}
+
+    \end{large}
+
+\newpage
+
+  \end{titlepage}
+}
+\makeatother
