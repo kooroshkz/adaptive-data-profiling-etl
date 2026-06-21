@@ -1,0 +1,9 @@
+{
+  "model": "LOF",
+  "params": {
+    "contamination": 0.12945138294999942,
+    "n_neighbors": 5,
+    "leaf_size": 40
+  },
+  "best_objective_f2": 0.29275996112730807
+}

@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/kooroshkz/Desktop/adaptive-data-profiling-etl/mlruns/807690575785611194/98639fa7e5ec4f9cb1cf9aa516c9f092/artifacts
+end_time: 1777369052464
+entry_point_name: ''
+experiment_id: '807690575785611194'
+lifecycle_stage: active
+run_id: 98639fa7e5ec4f9cb1cf9aa516c9f092
+run_name: amsterdam:univariate:soil_moisture_7_to_28cm
+run_uuid: 98639fa7e5ec4f9cb1cf9aa516c9f092
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777369052452
+status: 3
+tags: []
+user_id: kooroshkz

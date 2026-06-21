@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/kooroshkz/Desktop/adaptive-data-profiling-etl/mlruns/807690575785611194/eb6785d0a9134e4daa26e174e637cc8b/artifacts
+end_time: 1777032759124
+entry_point_name: ''
+experiment_id: '807690575785611194'
+lifecycle_stage: active
+run_id: eb6785d0a9134e4daa26e174e637cc8b
+run_name: amsterdam:univariate:soil_temperature_7_to_28cm
+run_uuid: eb6785d0a9134e4daa26e174e637cc8b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777032759112
+status: 3
+tags: []
+user_id: kooroshkz

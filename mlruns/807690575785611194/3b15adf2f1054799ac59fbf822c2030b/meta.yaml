@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/kooroshkz/Desktop/adaptive-data-profiling-etl/mlruns/807690575785611194/3b15adf2f1054799ac59fbf822c2030b/artifacts
+end_time: 1777367554341
+entry_point_name: ''
+experiment_id: '807690575785611194'
+lifecycle_stage: active
+run_id: 3b15adf2f1054799ac59fbf822c2030b
+run_name: new_york:univariate:soil_temperature_7_to_28cm
+run_uuid: 3b15adf2f1054799ac59fbf822c2030b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777367554328
+status: 3
+tags: []
+user_id: kooroshkz

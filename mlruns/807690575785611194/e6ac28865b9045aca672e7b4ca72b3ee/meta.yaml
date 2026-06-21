@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/kooroshkz/Desktop/adaptive-data-profiling-etl/mlruns/807690575785611194/e6ac28865b9045aca672e7b4ca72b3ee/artifacts
+end_time: 1777032843148
+entry_point_name: ''
+experiment_id: '807690575785611194'
+lifecycle_stage: active
+run_id: e6ac28865b9045aca672e7b4ca72b3ee
+run_name: tokyo:univariate:apparent_temperature
+run_uuid: e6ac28865b9045aca672e7b4ca72b3ee
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777032843137
+status: 3
+tags: []
+user_id: kooroshkz

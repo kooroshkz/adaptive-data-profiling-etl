@@ -1,0 +1,9 @@
+{
+  "model": "IForest",
+  "params": {
+    "contamination": 0.06433711474934678,
+    "n_estimators": 136,
+    "max_samples": 0.8858696799461636
+  },
+  "best_objective_f2": 0.31125696101829753
+}

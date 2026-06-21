@@ -1,0 +1,7 @@
+{
+  "model": "COPOD",
+  "params": {
+    "contamination": 0.0016599383296106033
+  },
+  "best_objective_f2": 0.08
+}

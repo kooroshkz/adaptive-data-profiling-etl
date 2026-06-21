@@ -1,0 +1,10 @@
+{
+  "model": "OCSVM",
+  "params": {
+    "contamination": 0.0921009969473825,
+    "kernel": "sigmoid",
+    "nu": 0.3925687837970485,
+    "gamma": 0.0006378000269201538
+  },
+  "best_objective_f1": 0.10196078431372549
+}

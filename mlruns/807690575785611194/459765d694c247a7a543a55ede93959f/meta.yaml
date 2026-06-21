@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/kooroshkz/Desktop/adaptive-data-profiling-etl/mlruns/807690575785611194/459765d694c247a7a543a55ede93959f/artifacts
+end_time: 1776527636658
+entry_point_name: ''
+experiment_id: '807690575785611194'
+lifecycle_stage: active
+run_id: 459765d694c247a7a543a55ede93959f
+run_name: new_york:multivariate:ALL_FEATURES
+run_uuid: 459765d694c247a7a543a55ede93959f
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1776527636647
+status: 3
+tags: []
+user_id: kooroshkz

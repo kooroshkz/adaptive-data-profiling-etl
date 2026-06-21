@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/kooroshkz/Desktop/adaptive-data-profiling-etl/mlruns/807690575785611194/ef3f70921ffa4b54af395802f96656f7/artifacts
+end_time: 1776524940365
+entry_point_name: ''
+experiment_id: '807690575785611194'
+lifecycle_stage: active
+run_id: ef3f70921ffa4b54af395802f96656f7
+run_name: london:univariate:surface_pressure
+run_uuid: ef3f70921ffa4b54af395802f96656f7
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1776524940355
+status: 3
+tags: []
+user_id: kooroshkz

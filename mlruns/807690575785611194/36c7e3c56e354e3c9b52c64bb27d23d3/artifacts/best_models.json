@@ -1,0 +1,316 @@
+{
+  "amsterdam:multivariate:ALL_FEATURES": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.12273526125862429,
+      "n_estimators": 137,
+      "max_samples": 0.922689493626274
+    },
+    "best_objective_f2": 0.31563373335525235
+  },
+  "amsterdam:univariate:temperature_2m": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.1465971053154312,
+      "n_neighbors": 14,
+      "leaf_size": 18
+    },
+    "best_objective_f2": 0.31636536631779255
+  },
+  "amsterdam:univariate:apparent_temperature": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.05975981254250833,
+      "n_neighbors": 33,
+      "leaf_size": 47
+    },
+    "best_objective_f2": 0.2868579052701801
+  },
+  "amsterdam:univariate:precipitation": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.17023282716867383,
+      "n_estimators": 167,
+      "max_samples": 0.9576492590949324
+    },
+    "best_objective_f2": 0.11970684039087948
+  },
+  "amsterdam:univariate:surface_pressure": {
+    "model": "ECOD",
+    "params": {
+      "contamination": 0.014531916369408456
+    },
+    "best_objective_f2": 0.30831099195710454
+  },
+  "amsterdam:univariate:soil_temperature_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.019367121118725565,
+      "n_neighbors": 20,
+      "leaf_size": 38
+    },
+    "best_objective_f2": 0.30170316301703165
+  },
+  "amsterdam:univariate:soil_moisture_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.1414983343633587,
+      "n_neighbors": 14,
+      "leaf_size": 39
+    },
+    "best_objective_f2": 0.29917635658914726
+  },
+  "london:multivariate:ALL_FEATURES": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.11972924789923983,
+      "n_estimators": 158,
+      "max_samples": 0.922689493626274
+    },
+    "best_objective_f2": 0.30659214203518004
+  },
+  "london:univariate:temperature_2m": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.0612891373403378,
+      "n_neighbors": 21,
+      "leaf_size": 36
+    },
+    "best_objective_f2": 0.3123569794050343
+  },
+  "london:univariate:apparent_temperature": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.033994998988896345,
+      "n_neighbors": 6,
+      "leaf_size": 59
+    },
+    "best_objective_f2": 0.29906317559452317
+  },
+  "london:univariate:precipitation": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.17023282716867383,
+      "n_estimators": 167,
+      "max_samples": 0.9576492590949324
+    },
+    "best_objective_f2": 0.11282660332541568
+  },
+  "london:univariate:surface_pressure": {
+    "model": "HBOS",
+    "params": {
+      "contamination": 0.04065757426591582,
+      "n_bins": 32,
+      "alpha": 0.031919955549926715,
+      "tol": 0.1059188745092372
+    },
+    "best_objective_f2": 0.3097949886104784
+  },
+  "london:univariate:soil_temperature_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.06121603293371257,
+      "n_neighbors": 25,
+      "leaf_size": 58
+    },
+    "best_objective_f2": 0.2940479013516718
+  },
+  "london:univariate:soil_moisture_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.13039021996499225,
+      "n_neighbors": 15,
+      "leaf_size": 59
+    },
+    "best_objective_f2": 0.30709237143553497
+  },
+  "new_york:multivariate:ALL_FEATURES": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.06433711474934678,
+      "n_estimators": 136,
+      "max_samples": 0.8858696799461636
+    },
+    "best_objective_f2": 0.31125696101829753
+  },
+  "new_york:univariate:temperature_2m": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.19531329722207635,
+      "n_estimators": 183,
+      "max_samples": 0.8798306599942693
+    },
+    "best_objective_f2": 0.2292709319626674
+  },
+  "new_york:univariate:apparent_temperature": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.12945138294999942,
+      "n_neighbors": 5,
+      "leaf_size": 40
+    },
+    "best_objective_f2": 0.29275996112730807
+  },
+  "new_york:univariate:precipitation": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.17023282716867383,
+      "n_estimators": 167,
+      "max_samples": 0.9576492590949324
+    },
+    "best_objective_f2": 0.09353875176858985
+  },
+  "new_york:univariate:surface_pressure": {
+    "model": "HBOS",
+    "params": {
+      "contamination": 0.018716129477270218,
+      "n_bins": 18,
+      "alpha": 0.1456522894009451,
+      "tol": 0.6704174144849991
+    },
+    "best_objective_f2": 0.31966813079551
+  },
+  "new_york:univariate:soil_temperature_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.017938934658588285,
+      "n_neighbors": 8,
+      "leaf_size": 41
+    },
+    "best_objective_f2": 0.3153586904188734
+  },
+  "new_york:univariate:soil_moisture_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.02048186947204276,
+      "n_neighbors": 9,
+      "leaf_size": 36
+    },
+    "best_objective_f2": 0.30124908155767816
+  },
+  "paris:multivariate:ALL_FEATURES": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.08929203369602468,
+      "n_estimators": 78,
+      "max_samples": 0.5149762056655094
+    },
+    "best_objective_f2": 0.30415162454873645
+  },
+  "paris:univariate:temperature_2m": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.19416297045246272,
+      "n_estimators": 190,
+      "max_samples": 0.9968035841315643
+    },
+    "best_objective_f2": 0.24472168905950095
+  },
+  "paris:univariate:apparent_temperature": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.19894698132622327,
+      "n_estimators": 169,
+      "max_samples": 0.9818721857450945
+    },
+    "best_objective_f2": 0.22976819845465637
+  },
+  "paris:univariate:precipitation": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.1862947712919154,
+      "n_estimators": 192,
+      "max_samples": 0.4708244079875672
+    },
+    "best_objective_f2": 0.11874105865522175
+  },
+  "paris:univariate:surface_pressure": {
+    "model": "ECOD",
+    "params": {
+      "contamination": 0.015591906049168644
+    },
+    "best_objective_f2": 0.2989790957705396
+  },
+  "paris:univariate:soil_temperature_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.025930285931075582,
+      "n_neighbors": 5,
+      "leaf_size": 62
+    },
+    "best_objective_f2": 0.30505590666018473
+  },
+  "paris:univariate:soil_moisture_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.10221540528889135,
+      "n_neighbors": 44,
+      "leaf_size": 14
+    },
+    "best_objective_f2": 0.29775805698271834
+  },
+  "tokyo:multivariate:ALL_FEATURES": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.10378498162511895,
+      "n_estimators": 126,
+      "max_samples": 0.8269624930786778
+    },
+    "best_objective_f2": 0.32095766828591255
+  },
+  "tokyo:univariate:temperature_2m": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.12199727512073186,
+      "n_neighbors": 19,
+      "leaf_size": 53
+    },
+    "best_objective_f2": 0.3125734430082256
+  },
+  "tokyo:univariate:apparent_temperature": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.17998506335222095,
+      "n_estimators": 192,
+      "max_samples": 0.997051699031053
+    },
+    "best_objective_f2": 0.23427606585056987
+  },
+  "tokyo:univariate:precipitation": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.17023282716867383,
+      "n_estimators": 167,
+      "max_samples": 0.9576492590949324
+    },
+    "best_objective_f2": 0.11129369584702718
+  },
+  "tokyo:univariate:surface_pressure": {
+    "model": "HBOS",
+    "params": {
+      "contamination": 0.06739837717920688,
+      "n_bins": 16,
+      "alpha": 0.11159579691986182,
+      "tol": 0.6470506497346782
+    },
+    "best_objective_f2": 0.30685061845861084
+  },
+  "tokyo:univariate:soil_temperature_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.04870842094265316,
+      "n_neighbors": 14,
+      "leaf_size": 43
+    },
+    "best_objective_f2": 0.3044325377496347
+  },
+  "tokyo:univariate:soil_moisture_7_to_28cm": {
+    "model": "LOF",
+    "params": {
+      "contamination": 0.015588208287426556,
+      "n_neighbors": 20,
+      "leaf_size": 34
+    },
+    "best_objective_f2": 0.3125
+  }
+}

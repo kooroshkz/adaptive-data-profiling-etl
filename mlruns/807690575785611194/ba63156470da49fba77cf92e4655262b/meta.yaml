@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/kooroshkz/Desktop/adaptive-data-profiling-etl/mlruns/807690575785611194/ba63156470da49fba77cf92e4655262b/artifacts
+end_time: 1776522950112
+entry_point_name: ''
+experiment_id: '807690575785611194'
+lifecycle_stage: active
+run_id: ba63156470da49fba77cf92e4655262b
+run_name: amsterdam:univariate:precipitation
+run_uuid: ba63156470da49fba77cf92e4655262b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1776522950102
+status: 3
+tags: []
+user_id: kooroshkz
