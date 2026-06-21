@@ -5,13 +5,14 @@
 \usepackage[left=2cm,right=2cm,top=2cm,bottom=3cm]{geometry}
 \usepackage{graphicx}
 \usepackage{tikz}
-\usetikzlibrary{shapes,backgrounds,calc,arrows,arrows.meta,patterns,matrix,positioning}
+\usetikzlibrary{shapes,backgrounds,calc,arrows,arrows.meta,patterns,matrix,positioning,fit}
 \usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{xcolor}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \usepgfplotslibrary{groupplots}
+\usepgfplotslibrary{fillbetween}
 \usepackage{listings}
 \usepackage{float}
 \usepackage{tabularx}
@@ -21,6 +22,7 @@
 \frenchspacing
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{8pt}
+\setlength{\emergencystretch}{2em}
 
 % ── Colour palette ───────────────────────────────────────────────────────────
 \definecolor{leidenblue}{RGB}{0,46,104}
@@ -83,19 +85,19 @@
 \thispagestyle{empty}
 \begin{abstract}
 \noindent
-\textbf{Background.} Data pipelines rely on simple rule-based quality checks to ingest, process, and store data in businesses. These traditional checks often fail to detect source-level semantic errors such as outliers before data reaches downstream users.
+\textbf{Background.} Organisations processing large volumes of data on a continuous basis rely on Extract-Transform-Load (ETL) pipelines to meet non-functional requirements such as scalability, high throughput, and reliability. These automated systems extract data from external sources, transform and clean it, and load it into storage for analysis and business decisions. Contemporary ETL pipelines use rule-based quality checks to catch data errors, but such checks often fail to detect subtler problems, such as values that appear valid yet sit far outside the historical norm, before bad data reaches the systems that depend on it.
 
 \noindent
-\textbf{Aim.} This thesis investigates whether automated learning-based anomaly detection is a reliable, low-cost addition to rule-based quality checks in the ingestion layer of ETL pipelines.
+\textbf{Aim.} This thesis investigates whether machine learning can automatically learn what normal data looks like and reliably flag deviations, serving as a low-cost complement to rule-based checks at the point where data first enters the pipeline.
 
 \noindent
-\textbf{Method.} We designed and implemented a modern ETL pipeline to evaluate a production-ready library developed for this purpose. The pipeline simulates a real-world data ingestion process on hourly weather data with injected controlled anomalies to provide ground-truth labels for effectiveness evaluation and computational overhead measurement. We compared both automated anomaly-detector selection (AutoML) and automated neural architecture search (Auto-NN) as approaches to automated learning-based detection.
+\textbf{Method.} We built and deployed a complete ETL pipeline processing hourly weather and electricity data, with artificial anomalies injected at known positions to measure detection accuracy and computational cost. We evaluated two automated approaches: classical machine learning model selection (AutoML) and Neural Hyperparameter Optimization (Neural HPO).
 
 \noindent
-\textbf{Results.} AutoML reliably detected anomalies on stable columns at low computational cost. Compared to Auto-NN, it ran 9.13$\times$ faster and achieved a 4.1$\times$ higher mean F2 score. Neural models added complexity without improving detection.
+\textbf{Results.} AutoML reliably detected anomalies on columns with predictable distributions at low computational cost. Compared to Neural Hyperparameter Optimization, it ran 9.13$\times$ faster and achieved a 4.1$\times$ higher mean F2-score. Deep learning models added complexity without improving detection quality.
 
 \noindent
-\textbf{Conclusion.} AutoML-based data profiling is a practical addition to ETL pipelines. Detection quality and computational cost depend strongly on the nature of the upstream data, making adaptive profiling a natural fit for some sources and impractical for others.
+\textbf{Conclusion.} AutoML-based anomaly detection is a practical complement to rule-based checks in data pipelines. Its effectiveness and cost depend strongly on the nature of the incoming data, making it well-suited for columns with stable, predictable distributions and less effective for noisy or irregular ones.
 \end{abstract}
 
 
@@ -112,11 +114,116 @@
 
 In data-driven organizations, data is collected from multiple distributed sources and must be processed, transformed, and stored before it can support dashboards, analytics, and business decisions \cite{munappy2020datapipeline}. Engineers manage this flow using automated systems called data pipelines, which define where data is collected, how it is processed, and where it is stored.
 
-The most common type is the ETL pipeline: Extract, Transform, Load. Data is pulled from an upstream source, processed, transformed, aggregated, and then written to a data warehouse where analysts and downstream users can use it.
+The most common type is the ETL pipeline (Extract, Transform, Load): data is pulled from a source system, processed and cleaned, and then written to a central data warehouse, a shared repository where analysts and business applications can query it.
 
-The problem is that traditional quality checks inside ETL pipelines are rule-based. A data engineer writes checks like ``temperature must not be null'' or ``pressure must be an integer type between 870 and 1085 hPa.'' These rules work well for obvious errors, but they only catch problems the engineer already knew about. Statistical anomalies, gradual sensor drift, or unexpected value distributions can pass through rule checks without triggering any alert \cite{chu2016datacleaning, Maddali2021AutomatingDQ}.
+The problem is that traditional quality checks inside ETL pipelines are rule-based. A data engineer writes checks like ``temperature must not be null'' or ``pressure must be an integer type between 870 and 1085 hPa.'' These rules work well for obvious errors, but they only catch problems the engineer already knew about. Gradual sensor drift, unusual patterns, or values far outside the seasonal norm can pass through rule checks without triggering any alert \cite{chu2016datacleaning, Maddali2021AutomatingDQ}.
 
-This thesis investigates whether machine learning can address this limitation. Instead of fixed rules, a model learns what normal data looks like from historical data and flags anything that deviates from that learned pattern, for example, a temperature reading that passes a valid-range check but sits far outside the recent seasonal norm. The goal is to make this automatic, requiring no manual rule-writing and minimal domain expertise for individual columns.
+This thesis investigates whether machine learning can address this limitation. Instead of fixed rules, a model learns what normal data looks like from historical data and flags anything that deviates from that learned pattern, for example, a temperature reading that passes a valid-range check but sits far outside the recent seasonal norm. The goal is to make this automatic, requiring no manual rule-writing and no specialist knowledge to define what counts as normal for each column.
+
+Figure~\ref{fig:intuition} gives the intuition. Both checks run at ingestion, inside the Extract stage of the ETL pipeline, before any transformation or loading, so bad data is caught at the earliest possible point (the shift-left principle). The rule-based check accepts any value of the correct type and inside a fixed valid range, so a reading that is technically valid but far from the seasonal norm flows straight through. The learning-based check instead compares each value to a narrow normal range learned from recent history, which follows the seasonal shape of the data, and flags the values that fall outside it. The same anomalies that the rule-based check lets through are caught by the learning-based check.
+
+% ── Intuition figure: rule-based vs. learning-based checks ────────────────────
+\begin{figure}[!htbp]
+\begin{center}
+% ---- Top: ETL pipeline, both checks inside the Extract (ingestion) stage ----
+\scalebox{0.9}{%
+\begin{tikzpicture}[
+  font=\small,
+  stage/.style={rounded corners=4pt, draw, line width=0.9pt, align=center,
+                minimum height=1.6cm, text width=1.9cm, inner sep=3pt, fill=gray!5},
+  chk/.style={rounded corners=4pt, draw, line width=0.9pt, align=center,
+              minimum height=1.6cm, text width=3.0cm, inner sep=3pt},
+  flow/.style={-{Stealth[length=6pt,width=4pt]}, line width=1.1pt, gray!60},
+]
+\node[stage] (src) {Source\\[1pt]{\scriptsize API / sensors}};
+\node[chk, draw=precision!80!black, fill=precision!7, right=1.3cm of src] (rule)
+  {\textbf{Rule-based}\\\textbf{check}\\[1pt]{\scriptsize type, not-null,}\\{\scriptsize valid range}};
+\node[chk, draw=recall!60!black, fill=recall!12, right=0.6cm of rule] (ml)
+  {\textbf{Learning-based}\\\textbf{check}\\[1pt]{\scriptsize adaptive profiling,}\\{\scriptsize learned normal range}};
+% container highlighting that both checks happen at ingestion (Extract), pre-transform
+\node[draw=leidenblue!70, dashed, line width=1pt, rounded corners=7pt,
+      inner sep=11pt, fit=(rule)(ml),
+      label={[font=\small\bfseries, text=leidenblue]above:Extract}]
+      (extract) {};
+\node[stage, right=1.3cm of ml] (tf) {Transform\\[1pt]{\scriptsize dbt / SQL}};
+\node[stage, right=0.7cm of tf] (load) {Load\\[1pt]{\scriptsize warehouse}};
+\draw[flow] (src) -- (rule);
+\draw[flow] (rule) -- (ml);
+\draw[flow] (ml.east) -- (tf.west);
+\draw[flow] (tf) -- (load);
+\node[font=\scriptsize, text=precision!60!black, text width=3.0cm, align=center, below=26pt of rule]
+  {lets far anomalies pass};
+\node[font=\scriptsize, text=recall!50!black, text width=3.0cm, align=center, below=26pt of ml]
+  {flags far anomalies};
+\end{tikzpicture}
+}
+
+\vspace{5mm}
+% ---- Bottom: zoomed-in time series ----
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.95\textwidth, height=6.8cm,
+  xlabel={Time (one seasonal cycle)}, ylabel={Temperature (°C)},
+  xmin=0, xmax=12, ymin=-12, ymax=40,
+  xtick=\empty,
+  ytick={-10,0,15,30},
+  axis line style={gray!55},
+  tick align=outside,
+  legend style={at={(0.5,1.03)}, anchor=south, legend columns=5, font=\scriptsize,
+                draw=codeborder, fill=white, /tikz/every even column/.append style={column sep=6pt}},
+  legend cell align=left,
+  clip=true,
+]
+% rule-based valid range: wide grey band (true top 60 °C, clipped here)
+\fill[colorgray!12] (axis cs:0,-10) rectangle (axis cs:12,40);
+% ML learned normal range: narrow band hugging the seasonal curve
+\addplot[name path=mlup, draw=none, domain=0:12, samples=160, forget plot] {15+12*sin(30*x)+4};
+\addplot[name path=mllo, draw=none, domain=0:12, samples=160, forget plot] {15+12*sin(30*x)-4};
+\addplot[recall, fill opacity=0.22, forget plot] fill between[of=mlup and mllo];
+% crisp green band edges
+\addplot[recall!65!black, line width=0.5pt, domain=0:12, samples=160, forget plot] {15+12*sin(30*x)+4};
+\addplot[recall!65!black, line width=0.5pt, domain=0:12, samples=160, forget plot] {15+12*sin(30*x)-4};
+% legend keys for the two bands
+\addlegendimage{area legend, fill=colorgray!12, draw=colorgray!45!black}
+\addlegendentry{rule valid range}
+\addlegendimage{area legend, fill=recall, fill opacity=0.22, draw=recall!65!black}
+\addlegendentry{ML normal range}
+% seasonal mean (learned norm)
+\addplot[recall!70!black, line width=1.1pt, domain=0:12, samples=160] {15+12*sin(30*x)};
+\addlegendentry{learned seasonal norm}
+% dashed deviation connectors: anomaly -> nearest band edge
+\draw[red!45, dashed, line width=0.6pt] (axis cs:3,5)   -- (axis cs:3,23.0);
+\draw[red!45, dashed, line width=0.6pt] (axis cs:8,30)  -- (axis cs:8,8.6);
+\draw[red!45, dashed, line width=0.6pt] (axis cs:10,-8) -- (axis cs:10,0.6);
+% normal data
+\addplot[only marks, mark=*, mark size=1.4pt, draw=precision!70!black, fill=precision!55]
+  coordinates {
+    (0,15.5)   (0.3,17.5)  (0.6,18.0)  (0.9,21.2)  (1.2,20.8)  (1.5,24.8)
+    (1.8,23.2) (2.1,27.4)  (2.4,25.0)  (2.7,28.0)  (3.15,25.8) (3.3,27.6)
+    (3.6,24.2) (3.9,27.0)  (4.2,23.5)  (4.5,20.6)  (4.8,24.3)  (5.1,21.8)
+    (5.4,18.0) (5.7,17.6)  (6.0,13.4)  (6.3,15.0)  (6.6,10.2)  (6.9,12.6)
+    (7.2,6.8)  (7.5,8.2)   (7.8,4.2)   (8.1,6.0)   (8.4,2.4)   (8.7,4.6)
+    (9.0,1.5)  (9.3,4.0)   (9.6,2.0)   (9.9,5.4)   (10.2,3.6)  (10.5,7.8)
+    (10.8,5.2) (11.1,9.6)  (11.4,8.0)  (11.7,13.0) (12.0,14.8)
+  };
+\addlegendentry{normal data}
+% anomalies: valid by rules, outside ML normal range
+\addplot[only marks, mark=*, mark size=3.2pt, draw=red!80!black, fill=red]
+  coordinates {(3,5) (8,30) (10,-8)};
+\addlegendentry{anomaly}
+% annotations
+\node[font=\scriptsize, text=colorgray!55!black, anchor=north west]
+  at (axis cs:0.2,38.5) {rule-based valid range $[-10,60]$\,°C};
+\node[font=\scriptsize\itshape, text=red!75!black, anchor=east]
+  at (axis cs:7.7,33) {valid by rules, flagged by ML};
+\draw[red!70!black, line width=0.5pt, -{Stealth[length=4pt]}]
+  (axis cs:7.75,32.4) -- (axis cs:7.95,30.6);
+\end{axis}
+\end{tikzpicture}
+\end{center}
+\caption{Where learning-based checks help. \textbf{Top:} both quality checks run inside the Extract (ingestion) stage of the ETL pipeline, before any Transform (dbt) or Load step, so anomalies are caught at the earliest point (the shift-left principle). Incoming data passes the rule-based check and then the learning-based (ML) check. \textbf{Bottom:} a zoom into the two checks on one seasonal column. The wide grey band is the fixed rule-based valid range, which accepts almost every value; the narrow green band is the normal range the model learns from recent history and tracks the season. The three red anomalies all sit inside the rule-based range (so rule checks pass them) but outside the learned normal range (so the ML check flags them).}
+\label{fig:intuition}
+\end{figure}
 
 \subsection{Motivation and Practical Relevance}
 
@@ -124,15 +231,15 @@ Rule-based quality checks exist, but subtle anomalies still pass through pipelin
 
 Recent industry work \cite{databricks2025aietl} shows that AI-driven ETL systems can automatically learn what normal data looks like and detect deviations before they reach downstream systems. Problems get caught earlier, before they propagate.
 
-One main motivation is the principle of shift-left data quality: validating data as early as possible in the pipeline, ideally at the point of ingestion \cite{datakitchen2023shiftleft}. If a bad record enters at the point of ingestion, every transformation that follows inherits the defect. Without early validation, each downstream system encounters and addresses the same issue independently, compounding both effort and cost.
+One main motivation is the principle of \emph{shift-left} data quality: validating data as early as possible in the pipeline, ideally at the point where it first enters \cite{datakitchen2023shiftleft}. The same idea has long been part of software engineering practice, where defects are generally cheaper to address the earlier in the lifecycle they are caught. If a bad record enters the pipeline, every transformation that follows inherits the defect, and by the time it reaches an aggregated report or a trained model it can be impossible to trace which source record caused the problem. Recent work argues that \emph{when} validation happens, not only which method is used, determines both the final error rate and the cost of correction: Kothari et al.\ \cite{kothari2026earlyqa} model validation timing as a measurable design variable and show that catching errors before they propagate is substantially cheaper than catching them after downstream stages have consumed them, while Karlas et al.\ \cite{karlas2025navigating} show that data errors compound as they move through the stages of a machine learning pipeline, so an error's impact depends strongly on where it is caught. This is consistent with the broader data-centric view that data quality should be treated as a first-class concern across the pipeline rather than patched downstream \cite{whang2023datacentric}.
 
-The other motivation is to reduce the cost of computation for high-quality data delivery by applying outlier detection once, rather than repeatedly by different downstream users. In practice, many data teams skip anomaly detection entirely due to the engineering effort and domain expertise required.
+The other motivation is to reduce the cost of computation for high-quality data delivery by applying outlier detection once, rather than repeatedly by different downstream users. The benefit of acting early is not only lower cost: the ActiveClean project \cite{krishnan2016activeclean} shows that dirty data systematically biases downstream model parameters, and that cleaning earlier in the pipeline gives up to 2.5 times better model accuracy for the same cleaning budget, while HoloClean \cite{rekatsinas2017holoclean} shows the broader trend away from pure rule-based quality toward learning-based approaches. In practice, many data teams skip anomaly detection entirely due to the engineering effort and domain expertise required \cite{tu2023autovalidate}.
 \subsection{Research Questions}
 
 The main research question is:
 
 \begin{center}
-\emph{How effective and practical is learning-based anomaly detection as an addition to rule-based quality checks in ETL pipeline ingestion?}
+\emph{How effective and practical is learning-based anomaly detection as an addition to rule-based quality checks at the point where data first enters an ETL pipeline?}
 \end{center}
 
 This is explored through three sub-questions:
@@ -143,13 +250,13 @@ This is explored through three sub-questions:
   How accurately can learning-based anomaly detection identify outlier data quality issues compared to rule-based checks?
   \item In terms of \emph{practicality}:
 
-  What is the computational overhead of integrating learning-based anomaly detection into the ingestion stage, and how does it scale with data size?
+  What is the computational overhead of integrating learning-based anomaly detection at the point where data enters the pipeline, and how does it scale with data size?
   \item In terms of \emph{learning model}:
   
-  Does machine learning outperform neural architecture search in the trade-off between detection accuracy and computational cost for automated anomaly detection?
+  Does classical machine learning outperform deep learning architecture search in the trade-off between detection accuracy and computational cost for automated anomaly detection?
 \end{itemize}
 
-Throughout this thesis, the term \textbf{adaptive data profiling} refers to a per-column quality check layer that trains a statistical anomaly detection model on each column's own historical data. It is adaptive in that the algorithm selected varies per column based on its data characteristics, each upstream source trains its own model, and the models can be retrained on a schedule as data patterns change over time.
+Throughout this thesis, the term \textbf{adaptive data profiling} refers to a quality check layer that trains a separate anomaly detection model on each individual data column. It is adaptive in three ways: the algorithm chosen varies based on the column's own data characteristics; each data source trains its own model; and models are retrained on a schedule as data patterns change over time.
 
 % ============================================================
 \section{Background}\label{sec:background}
@@ -157,7 +264,7 @@ Throughout this thesis, the term \textbf{adaptive data profiling} refers to a pe
 
 \subsection{Data Pipelines in Practice}
 
-A data pipeline is the system that handles this automatically. There are two main types. Real-time pipelines process data as it arrives, suitable for fraud detection or live dashboards. ETL pipelines process data in batches on a schedule, suitable for analytics, reporting, and training machine learning models.
+A data pipeline is the system that handles this automatically, governing how data is collected, processed, and delivered to the systems that depend on it \cite{munappy2020datapipeline}. There are two main types. Real-time (streaming) pipelines process data as it arrives, suitable for fraud detection or live dashboards. ETL pipelines process data in batches on a schedule, suitable for analytics, reporting, and training machine learning models \cite{vassiliadis2009etl}.
 
 \subsubsection{Business Use of ETL Pipelines}
 
@@ -175,6 +282,8 @@ In each case, the pipeline extracts raw data from sources the company does not c
 
 \subsubsection{ETL: Extract, Transform, Load}
 
+Extract-Transform-Load is the long-established process for populating a data warehouse from operational sources, and it remains the dominant integration pattern behind analytics and decision-support systems \cite{vassiliadis2009etl, chaudhuri1997olap}.
+
 \textbf{Extract} pulls data from a source: a REST API, a database like PostgreSQL, data lakes, or a stream. In this project, data is extracted from the Open-Meteo weather API \cite{openmeteo2022} to simulate a modern ETL system.
 
 \textbf{Transform} reshapes and cleans the data: fixing types, removing duplicates, joining tables and running quality checks. In this pipeline, transformation is handled by dbt, which runs SQL on a DuckDB warehouse.
@@ -191,34 +300,36 @@ Sculley et al. \cite{sculley2015hidden} showed that hidden technical debt in ML 
 
 \subsection{The Case for Shift-Left Data Quality}
 
-``Shift-left'' means validating data as early as possible in the pipeline, ideally at the point of ingestion. If a bad record enters the pipeline at the point of ingestion, it passes through every transformation after that. By the time it reaches an aggregated report or a trained model, it may be impossible to identify which source record caused the problem.
+``Shift-left'' means validating data as early as possible in the pipeline, ideally at the point of ingestion. The principle has long been part of software engineering practice, where defects are generally cheaper to address the earlier in the lifecycle they are caught \cite{datakitchen2023shiftleft}. The same logic transfers to data pipelines: a defect that enters at ingestion passes through every transformation after that, and by the time it reaches an aggregated report, it may be impossible to identify which source record caused the problem.
 
-Detecting the problem at the point of ingestion stops this propagation immediately. The flagged record can be reported upstream for validation, excluded from aggregations, or filtered before reaching downstream consumers. This is the core argument for integrating anomaly detection into the ingestion layer rather than leaving it to downstream users \cite{datakitchen2023shiftleft, krishnan2016activeclean}.
+Crucially, recent work argues that the timing of validation, not only the method used, determines both the final error rate and the cost of correction. Kothari et al.\ \cite{kothari2026earlyqa} formalise validation timing as a measurable design variable through an error-propagation model and show, drawing on the software-engineering evidence, that catching errors before they propagate is substantially cheaper than catching them after downstream stages have already consumed them. Karlas et al.\ \cite{karlas2025navigating} similarly emphasise that data errors compound as they move through the stages of a modern ML pipeline, so the impact of an error depends strongly on where in the pipeline it is caught. This is consistent with the broader data-centric view that data quality must be treated as a first-class concern across the pipeline rather than patched downstream \cite{whang2023datacentric}.
+
+Detecting the problem at the point of ingestion stops this propagation immediately. The flagged record can be reported upstream for validation, excluded from aggregations, or filtered before reaching downstream consumers. Doing it once at ingestion also avoids each downstream consumer having to independently detect and handle the same defect. This motivates placing data-quality checks as early as possible in the pipeline, including at ingestion when the relevant error signals are available. Industry discussions of shift-left data quality make this argument explicitly, while recent research on annotation QA and ML-pipeline errors supports the broader point that validation timing and error propagation matter \cite{datakitchen2023shiftleft, kothari2026earlyqa, karlas2025navigating}.
 
 \subsection{Unsupervised Anomaly Detection}
 
-Unsupervised anomaly detection identifies unusual data points without labeled training data. The idea is to train a model on historical data to learn what normal looks like, then score new records based on how well they fit that learned distribution. Records that deviate significantly get a high anomaly score.
+Unsupervised anomaly detection identifies unusual data points without labeled training data \cite{chandola2009anomaly}. The idea is to train a model on historical data to learn what normal looks like, then score new records based on how well they fit that learned distribution. Records that deviate significantly get a high anomaly score.
 
 
 We selected PyOD over H2O AutoML, AutoGluon, and PyCaret for its targeted unsupervised detection models and simple integration into the Adaptive Profiling library.
 
 Four algorithms from the PyOD library \cite{zhao2019pyod} were selected by Optuna across all trained models in this project:
 
-\textbf{Local Outlier Factor (LOF)} measures the local density of a point compared to its neighbors. Points in less crowded areas than their neighbors get high anomaly scores. It is effective for contextual anomalies and scales super-linearly with data size.
+\textbf{Local Outlier Factor (LOF)} \cite{breunig2000lof} measures the local density of a point compared to its neighbors. Points in less crowded areas than their neighbors get high anomaly scores. It is effective for contextual anomalies and scales super-linearly with data size.
 
-\textbf{ECOD (Empirical Cumulative Distribution-based Outlier Detection)} finds unusual values by checking how far each value is from the normal range of a feature. It is fast, easy to explain, and requires minimal hyperparameter configuration. This makes it an effective baseline for columns where most values are close together.
+\textbf{ECOD (Empirical Cumulative Distribution-based Outlier Detection)} \cite{li2023ecod} finds unusual values by checking how far each value is from the normal range of a feature. It is fast, easy to explain, and requires minimal hyperparameter configuration. This makes it an effective baseline for columns where most values are close together.
 
-\textbf{Histogram-based Outlier Score (HBOS)} estimates the density of each feature independently using histograms. It is fast and effective for low-dimensional data where features are approximately independent.
+\textbf{Histogram-based Outlier Score (HBOS)} \cite{goldstein2012histogram} estimates the density of each feature independently using histograms. It is fast and effective for low-dimensional data where features are approximately independent.
 
-\textbf{COPOD (Copula-based Outlier Detection)} finds unusual rows by looking at how feature values behave together. It gives higher scores to rows with rare combinations of values. It is fast and requires minimal hyperparameter configuration.
+\textbf{COPOD (Copula-based Outlier Detection)} \cite{li2020copod} finds unusual rows by looking at how feature values behave together. It gives higher scores to rows with rare combinations of values. It is fast and requires minimal hyperparameter configuration.
 
 Campos et al. \cite{campos2016evaluation} show that no single algorithm dominates across all datasets. The right choice depends on the data, which is why automated model selection is important.
 
 \subsection{AutoML and Hyperparameter Optimization}
 
-AutoML refers to automating the selection of algorithms and their hyperparameters. Instead of manually choosing among Isolation Forest, LOF, ECOD, HBOS, and COPOD, and tuning each configuration by hand, an optimization framework searches the possible configurations automatically.
+AutoML refers to automating the selection of algorithms and their hyperparameters so that building a model requires little manual tuning or specialist intervention \cite{he2021automl}. Instead of manually choosing among Isolation Forest \cite{liu2008isolationforest}, LOF, ECOD, HBOS, and COPOD, and tuning each configuration by hand, an optimization framework searches the space of possible configurations automatically. Such automated search has been shown to find good configurations far more efficiently than manual or grid search \cite{bergstra2012random}.
 
-We use Optuna for this purpose, choosing it over Scikit-Optimize (skopt), Hyperopt, and Ray Tune because it is simple to use, compatible with PyOD, and well suited for searching across model types and key hyperparameters.
+We use Optuna \cite{akiba2019optuna} for this purpose, choosing it over Scikit-Optimize (skopt), Hyperopt, and Ray Tune because it is simple to use, compatible with PyOD, and well suited for searching across model types and key hyperparameters. Optuna's default sampler is the Tree-structured Parzen Estimator \cite{bergstra2011hyperparameter}, a sequential model-based method that concentrates trials in the promising regions of the search space. Optuna is also used for the neural comparison experiment (Section~\ref{sec:autonn_comparison}), where the search space switches from PyOD classical detectors to PyTorch neural models.
 
 
 % ============================================================
@@ -233,20 +344,18 @@ In contrast, this thesis integrates AutoML on historical data, automating model 
 
 \subsection{Limitations of Similar Tools}
 
-The SIGMOD 2016 by Chu et al. \cite{chu2016datacleaning} draws a clear distinction between qualitative and quantitative data quality problems and shows that modern systems need both approaches. Rule-based systems such as Deequ \cite{schelter2018automating} are effective at checking rules that users define, such as missing values, allowed ranges, duplicates, and data types. Deequ also supports anomaly detection, but mainly on data-quality metrics over time, such as changes in row count or completeness. It does not mainly focus on finding unusual values inside individual records. Therefore, values that follow the written rules but are still statistically unusual may pass through unless extra anomaly detection is added.
-
-\subsection{Cost of Late-Stage Cleaning}
-
-ActiveClean project \cite{krishnan2016activeclean} shows that dirty data systematically biases downstream model parameters, and that cleaning earlier in the pipeline gives up to 2.5 times better model accuracy for the same cleaning budget. HoloClean \cite{rekatsinas2017holoclean} shows the broader trend away from pure rule-based quality toward learning-based approaches.
+The SIGMOD 2016 paper by Chu et al. \cite{chu2016datacleaning} draws a clear distinction between qualitative and quantitative data quality problems and shows that modern systems need both approaches. Rule-based systems such as Deequ \cite{schelter2018automating} are effective at checking rules that users define, such as missing values, allowed ranges, duplicates, and data types. Deequ also supports anomaly detection, but mainly on data-quality metrics over time, such as changes in row count or completeness. It does not mainly focus on finding unusual values inside individual records. Therefore, values that follow the written rules but are still statistically unusual may pass through unless extra anomaly detection is added.
 
 \subsection{AutoML for Anomaly Detection}
 
-Koh et al. \cite{KOH2022107886} demonstrate AutoML applied end-to-end in an industrial domain, showing that an automated pipeline generalizes across different dataset configurations without manual tuning. Emmott et al. \cite{emmott2013systematic} provide a methodology for constructing ground-truth anomaly detection benchmarks with controlled anomaly properties, which motivates the controlled-anomaly evaluation approach used in this project.
+Koh et al. \cite{KOH2022107886} demonstrate AutoML applied end-to-end in an industrial domain, showing that an automated pipeline generalizes across different dataset configurations without manual tuning. Applying AutoML to anomaly detection is harder than to supervised learning: without labels there is no hold-out validation signal against which to compare candidate models, so model and hyperparameter selection cannot rely on a conventional objective. Zhao et al. \cite{zhao2021metaod} tackle this unsupervised outlier model selection problem with MetaOD, a meta-learning approach that picks a detector and its hyperparameters for a new dataset by transferring performance knowledge from a large collection of historical benchmark datasets, and report that principled selection significantly outperforms always using a single popular detector or an ensemble of many.
+
+This thesis takes a complementary and more lightweight route. Rather than transferring meta-knowledge across datasets, it runs a per-column Optuna search on each source's own recent history and uses the injected anomalies purely for evaluation, never for training, so the search itself remains unsupervised. Emmott et al. \cite{emmott2013systematic} provide a methodology for constructing ground-truth anomaly detection benchmarks with controlled anomaly properties, which motivates the controlled-anomaly evaluation approach used to measure that search in this project.
 
 \subsection{Classical ML vs.\ Neural Networks for Tabular Anomaly Detection}
 \label{sec:relwork_nn}
 
-For high-dimensional inputs like images or audio, neural autoencoders are a natural fit for anomaly detection. However, this logic does not carry over to low-dimensional tabular data. A single-column input gives the autoencoder nothing meaningful to compress. A network with even a few hidden layers can memorize the training set, so reconstruction error does not reliably separate anomalies from normal points.
+For high-dimensional inputs like images or audio, neural autoencoders are a natural fit for anomaly detection. However, this logic does not carry over as cleanly to low-dimensional tabular data, where a single-column input gives the autoencoder little structure to compress. A further, well-documented difficulty is that autoencoders often \emph{generalize} well enough to reconstruct anomalies almost as accurately as normal points, so a large reconstruction error is not a reliable indicator of an anomaly. Gong et al.\ \cite{gong2019memae} observe exactly this failure, that the reconstruction assumption ``does not always hold in practice'', and propose memory-augmented autoencoders specifically to counteract it.
 
 In the most comprehensive tabular anomaly detection benchmark to date, Han et al.\ \cite{han2022adbench} evaluate 30 detectors over 57 datasets and report that, in the unsupervised setting, no algorithm is statistically better than the rest and that several deep-learning detectors perform worse than classical shallow methods, which are also easier to train and tune. Campos et al.\ \cite{campos2016evaluation} reach a consistent conclusion in a focused study of twelve nearest-neighbor-based detectors: performance depends strongly on the dataset and on parameter settings, with no universal winner, which motivates automated per-column model selection. The PyOD library \cite{zhao2019pyod} exposes both classical detectors such as LOF and neural ones such as autoencoders behind a single API, which makes a like-for-like comparison between the two model families straightforward.
 
@@ -254,12 +363,10 @@ Speed is also a practical concern. Training a neural network for tens to hundred
 
 
 % ============================================================
-\section{Methodology}\label{sec:approach}
+\section{System Design}\label{sec:systemdesign}
 % ============================================================
 
-The methodology follows a build-and-evaluate approach. A complete ETL pipeline was designed and deployed on AWS, using Apache Airflow for orchestration, dbt for SQL transformations, and DuckDB as a data warehouse. A custom Python library called the Adaptive Profiler was developed and integrated at the ingestion stage. It adds two quality check layers on each incoming batch: a rule-based layer for data contract checks, and an ML-based layer that trains an anomaly detection model per column using PyOD and Optuna. Both layers are configured through a single YAML file.
-
-To evaluate the system, hourly weather data from five cities was ingested from the Open-Meteo API with controlled anomalies injected as ground-truth labels. Three experiments were run, one per research sub-question: detection effectiveness, computational overhead and scaling, and a comparison between classical AutoML and Auto-NN.
+This work follows a build-and-evaluate approach: this section describes the system that was built, and Section~\ref{sec:expsetup} describes how it was evaluated. A complete ETL pipeline was designed and deployed on AWS, using Apache Airflow for orchestration, dbt for SQL transformations, and DuckDB as a data warehouse. A custom Python library called the Adaptive Profiler was developed and integrated at the ingestion stage. It adds two quality check layers on each incoming batch: a rule-based layer for data contract checks, and an ML-based layer that trains an anomaly detection model per column using PyOD and Optuna. Both layers are configured through a single YAML file.
 
 \subsection{System Architecture}
 
@@ -521,6 +628,12 @@ In \textbf{training mode}, Optuna searches for the best model and hyperparameter
 
 In \textbf{scoring mode}, the profiler loads the saved model for each column and scores new incoming rows. The output is a long-format DataFrame with one row per (timestamp, column) containing the anomaly score, a binary flag, and any rule-based violations. Failures are reported in the output rather than raised as exceptions so the pipeline keeps running.
 
+% ============================================================
+\section{Experimental Setup}\label{sec:expsetup}
+% ============================================================
+
+To evaluate the system, hourly weather data from five cities was ingested from the Open-Meteo API with controlled anomalies injected as ground-truth labels. Three experiments were run, one per research sub-question: detection effectiveness, computational overhead and scaling, and a comparison between classical AutoML and neural detector search.
+
 \subsection{Dataset}
 
 The experiments use weather data from the Open-Meteo API \cite{openmeteo2022}, benchmarked across five different cities: Amsterdam, New York, London, Paris, and Tokyo. Each hourly record contains temperature, apparent temperature, precipitation, surface pressure, soil temperature, and soil moisture. The data is stored in Parquet format on Amazon S3. Each city dataset contains 20,352 hourly records.
@@ -537,11 +650,13 @@ A second dataset is introduced in Section~\ref{sec:elec_generalization} to asses
 
 \subsection{Experiment Design}
 
-The two research sub-questions map to two main experiments, with one additional validation experiment comparing the chosen classical AutoML approach to a neural architecture search alternative.
+The three research sub-questions map to three experiments.
 
 \textbf{Experiment 1: Detection effectiveness.} To answer how accurately ML-based detection finds data quality issues compared to rule-based checks, we inject controlled anomalies into the data and compare the system's detections against the known injection labels. This directly measures detection quality. Section~\ref{sec:elec_generalization} repeats the same procedure on electricity demand data to assess cross-domain generalization.
 
 \textbf{Experiment 2: Practical overhead.} To answer the practical impact question, a built-in projection tool in the profiling library benchmarks training time across different data sizes, column counts, and trial budgets, and fits an empirical scaling law to the results.
+
+\textbf{Experiment 3: Classical vs.\ neural detectors.} To answer the learning-model question, the chosen classical AutoML approach is compared against an automated neural (autoencoder) detector search on the same data, preprocessing, and unsupervised objective, measuring both detection quality and search cost.
 
 \subsubsection{Experiment 1: Anomaly Injection and Detection}
 
@@ -559,27 +674,24 @@ where $n$ is the number of rows, $m$ the number of columns, and $k$ the number o
 
 The library's built-in benchmarking feature produces these parameters, so users can project training time to larger datasets or apply the tool to other metrics and pipelines.
 
+\subsubsection{Experiment 3: AutoML vs.\ Neural Detector Search}
+\label{sec:autonn_setup}
 
-\section*{Declaration of AI Tool Usage}
-\addcontentsline{toc}{section}{Declaration of AI Tool Usage}
-During the preparation of this thesis, the following AI tools were used:
+To validate the choice of classical PyOD algorithms over neural network detectors, we ran both approaches on the same five-city dataset, same preprocessing, and same unsupervised objective. Neither sees anomaly labels at any point. Both are driven by the same Optuna search; the only difference is the search space.
+
 \begin{itemize}
-  \item \textbf{Claude Code} (Anthropic) was used to assist with experiment
-  setup implementation, including pipeline configuration scripts and development
-  of the Adaptive Profiler library. All code was reviewed, tested, and validated
-  by the author.
-  \item \textbf{Amazon Q} (Amazon Web Services) assisted with AWS service
-  configuration, including S3, IAM, and EC2 setup for the experiment
-  infrastructure. All configurations were reviewed and verified by the author.
-  \item \textbf{Consensus} was used to assist in discovering and summarizing
-  academic literature during the different phases of research. All cited works were
-  independently read and evaluated by the author.
-  \item \textbf{ChatGPT} (OpenAI) was used to improve the language, grammar,
-  and readability of the written text. All content reflects the author's original
-  analysis, findings, and ideas.
+  \item \textbf{AutoML:} Optuna selects among Isolation Forest, LOF, ECOD, HBOS, and COPOD with 25 trials per column, the same classical PyOD detectors used in the main pipeline.
+  \item \textbf{Neural Hyperparameter Optimization (Neural HPO):} Optuna searches over two PyTorch autoencoder detectors, the Autoencoder (AE) and Variational Autoencoder (VAE), with 25 trials per column to match AutoML.
 \end{itemize}
-The author takes full responsibility for the accuracy and integrity of all content
-in this thesis.
+
+We implemented the neural detectors in PyTorch rather than a higher-level wrapper such as AutoKeras or Auto-PyTorch because these wrappers do not support the Autoencoder (AE) and Variational Autoencoder (VAE) architectures. We restricted the search space to autoencoder-style models, the standard neural approach to unsupervised anomaly detection \cite{pang2022deeplearning}: an autoencoder is trained only to reconstruct normal-looking data and flags the points it reconstructs poorly, so, like the PyOD detectors, it needs no anomaly labels. A One-Class SVM was deliberately left out of the search space because it is not a neural network; keeping the search purely neural ensures a like-for-like comparison against the classical baseline. The two variants differ in how they model the normal distribution.
+
+\textbf{Autoencoder (AE)} compresses each input through a narrow hidden bottleneck and reconstructs it, minimizing reconstruction error on historical data. It learns to rebuild normal values accurately, so a record it reconstructs poorly receives a high anomaly score. It is the most widely used neural baseline for anomaly detection.
+
+\textbf{Variational Autoencoder (VAE)} extends the autoencoder with a probabilistic latent space and is trained on the evidence lower bound, a reconstruction term plus a KL-divergence regularizer. The latent regularization is intended to give a smoother model of the normal distribution and a better-calibrated reconstruction score, at the cost of a harder optimization.
+
+For both models Optuna searches the same architecture space: hidden layer count, layer width, activation function, learning rate, epoch count, and batch size; Scikit-learn handles the preprocessing. The detection and timing results of this comparison are reported in Section~\ref{sec:autonn_comparison}.
+
 
 % ============================================================
 \section{Results}\label{sec:experiments}
@@ -605,7 +717,7 @@ Figure~\ref{fig:injected} shows a close-up of Amsterdam temperature, where pink 
 
 \subsubsection{Amsterdam Detection Results}
 
-For comparison, the rule-based temperature check defined a valid range of $[-10, 60]$\,°C. All 74 injected anomalies fell within this range, whereas the ML-based quality checks detected 53 of the 74 anomalies, corresponding to a recall of 71.6%.
+For comparison, the rule-based temperature check defined a valid range of $[-10, 60]$\,°C. All 74 injected anomalies fell within this range, whereas the ML-based quality checks detected 53 of the 74 anomalies, corresponding to a recall of 71.6\%.
 
 Figure~\ref{fig:ams_bar} shows precision, recall, and F1 for all six univariate columns in Amsterdam. Each bar represents the metric for the best model selected by Optuna for that column.
 
@@ -900,7 +1012,7 @@ Figure~\ref{fig:shift} shows how detection rate changes with the size of the inj
 \subsubsection{Generalization to Electricity Data}
 \label{sec:elec_generalization}
 
-To verify that the approach generalizes beyond weather data, we applied the Adaptive Profiler to GB national electricity demand records from the Elexon BMRS Insights API \cite{elexonbmrs2026}. The dataset contains two columns: \texttt{initialDemandOutturn} (INDO) and \texttt{initialTransmissionSystemDemandOutturn} (ITSDO). We injected 147 synthetic anomalies at a rate of 2.00\%, with shifts of 50--100\% of the original value distributed randomly in sign and target column.
+To verify that the approach generalizes beyond weather data, we applied the Adaptive Profiler to GB national electricity demand records from the Elexon BMRS Insights API \cite{elexonbmrs2026}. The dataset contains two columns: \texttt{initialDemandOutturn} (INDO) and \texttt{initialTransmissionSystem\allowbreak DemandOutturn} (ITSDO). We injected 182 synthetic anomalies at a rate of approximately 2.5\%, with shifts of 50--100\% of the original value distributed randomly in sign and target column.
 
 This experiment was conducted by running the profiler twice on the same data. The untuned run is equivalent to \texttt{automl: true} with default hyperparameters in \texttt{profiling\_schema.yml} selected by Optuna. The tuned run has customized parameters found by the script to fit better based on data characteristics and ground truth, simulating a data engineer setup for increasing detector accuracy. Table~\ref{tab:elec_before_after} shows the impact of tuning.
 
@@ -958,7 +1070,7 @@ ITSDO & 79  & 72 & 8.9\% & 11 & 0.15\% \\
 \end{figure}
 
 \paragraph{Shift magnitude vs.\ detection rate.}
-Figure~\ref{fig:elec_shift} compares detection rate by shift band for INDO. At the 50--60\% band the tuned model detects 95\% of anomalies versus 67\% for the untuned baseline, both reach 100\% at shifts of 80\% or above. The benefit of tuning is largest where the signal is weakest.
+Figure~\ref{fig:elec_shift} compares detection rate by shift band for INDO. At the 50--60\% band the tuned model detects 95\% of anomalies versus 67\% for the untuned baseline; the tuned model reaches 100\% at shifts of 80\% or above, while the untuned baseline reaches 90--94\%. The benefit of tuning is largest where the signal is weakest.
 
 \begin{figure}[H]
 \begin{center}
@@ -993,7 +1105,7 @@ Figure~\ref{fig:elec_shift} compares detection rate by shift band for INDO. At t
 \end{axis}
 \end{tikzpicture}
 \end{center}
-\caption{Detection rate by injected shift size for INDO (tuned AutoML vs.\ untuned IForest baseline). Anomalies at 80\% shift or above are caught by both approaches. The tuned run provides the largest benefit at the 50--60\% shift band, lifting detection from 67\% to 95\%.}
+\caption{Detection rate by injected shift size for INDO (tuned AutoML vs.\ untuned IForest baseline). The tuned model catches all anomalies at 80\% shift or above, while the untuned baseline reaches 90--94\%. The tuned run provides the largest benefit at the 50--60\% shift band, lifting detection from 67\% to 95\%.}
 \label{fig:elec_shift}
 \end{figure}
 
@@ -1002,6 +1114,8 @@ Figure~\ref{fig:elec_shift} compares detection rate by shift band for INDO. At t
 The second experiment answers the second research sub-question: is ML-based profiling practical in terms of pipeline overhead and resource usage?
 
 A built-in projection tool in the profiling library benchmarks training time across different data sizes, column counts, and trial budgets, then fits an empirical scaling law to the results. We ran it across approximately 90 benchmark configurations on the same hardware used for production. This tool lets any user predict how long training will take at their full data scale before committing to a deployment.
+
+We express cost as wall-clock training time because that is the quantity cloud platforms charge for: compute clusters are rented per unit of time, and the same workload costs more or less depending on the cluster's core count, memory, and instance type. Predicting how long the detection step runs therefore directly predicts what it costs to operate.
 
 \subsubsection{The Scaling Formula}
 
@@ -1015,26 +1129,26 @@ Table~\ref{tab:scaling_params} explains what each symbol means and where its val
 
 \begin{table}[H]
 \begin{center}
-\begin{tabularx}{\linewidth}{@{}llX@{}}
+\begin{tabularx}{\linewidth}{@{}llXl@{}}
 \toprule
-Symbol & Name & Definition \\
+Symbol & Name & Definition & Expected range \\
 \midrule
-$n$      & Rows              & Number of records used for training \\
-$m$      & Columns           & Number of features to be profiled having \texttt{automl: true} \\
-$k$      & Trials            & Amount of models and parameters Optuna tries \\
+$n$      & Rows              & Number of records used for training & $\ge 1$ \\
+$m$      & Columns           & Number of \texttt{automl: true} features to profile & $\ge 1$ \\
+$k$      & Trials            & Models and parameter sets Optuna tries & $\ge 1$ \\
 \midrule
-$\alpha$ & Baseline constant & Fitted from benchmark runs and depends on the hardware \\
-$\beta$  & Row exponent      & Fitted by benchmarking at different row counts \\
-$\delta$ & Column exponent   & Fitted by benchmarking at different column counts \\
-$\gamma$ & Trial exponent    & Fitted by benchmarking at different trial counts \\
+$\alpha$ & Baseline constant & Per-fit baseline cost; depends on hardware and data & $> 0$ \\
+$\beta$  & Row exponent      & How training time grows with rows & $0.3$--$1.2$ \\
+$\delta$ & Column exponent   & How training time grows with columns & $\approx 1$ \\
+$\gamma$ & Trial exponent    & How training time grows with trials & $\approx 1$ \\
 \bottomrule
 \end{tabularx}
 \end{center}
-\caption{Inputs and fitted parameters. $n$, $m$, $k$ are known at runtime. The exponents $\beta$, $\delta$, $\gamma$ describe how time scales with each factor and primarily reflect algorithmic scaling rather than hardware. $\alpha$ is hardware-dependent and was fitted on the benchmark machine.}
+\caption{Inputs and fitted parameters. $n$, $m$, and $k$ are known at runtime, whereas $\alpha$, $\beta$, $\delta$, and $\gamma$ are fitted from benchmark runs. The expected-range column shows where each exponent typically falls for algorithms in projection experiments in the Adaptive Profiler library, based on input benchmark data.}
 \label{tab:scaling_params}
 \end{table}
 
-The exponents $\beta$, $\delta$, $\gamma$ primarily reflect properties of the algorithms and data structure rather than hardware, while $\alpha$ captures most of the hardware-dependent variation across machines. On substantially different systems the exponents may need refitting. All four values can only be obtained by running the projection tool across different configurations and measuring real training times.
+The exponents $\beta$, $\delta$, $\gamma$ primarily reflect properties of the algorithms and data structure rather than hardware, while $\alpha$ captures the baseline per-fit cost of the benchmark machine and data. These parameters were fitted on one specific data batch, with Optuna drawing across the same five detectors it uses in production. Because the realized time depends on which detectors the search spends most of its trials on, and on the size and structure of the incoming data, a substantially different dataset, model mix, or machine can shift the constants. The fitted values should therefore be read as calibrated to the benchmark setup rather than as universal constants. In practice, the projection tool is re-run on a sample of the target data so that $\alpha$ and the exponents reflect that specific workload. All four can only be obtained by running the tool across different configurations and measuring real training times.
 
 \subsubsection{Scaling Behavior Depends on Algorithm Choice}
 
@@ -1058,7 +1172,7 @@ $> 1.0$ & Super-linear & Training time grows faster than the data \\
 \label{tab:beta_meaning}
 \end{table}
 
-Figure~\ref{fig:train_scaling} shows per-algorithm training time projections. The fitted $\beta$ values span from 0.307 (IForest, sub-linear) to 1.175 (LOF, super-linear). The key finding is that \textbf{algorithm choice determines scaling behavior more than data size alone}.
+Figure~\ref{fig:train_scaling} shows per-algorithm training time projections. The fitted $\beta$ values span from 0.307 (IForest, sub-linear) to 1.175 (LOF, super-linear). The key finding is that \textbf{algorithm choice determines scaling behavior more than data size alone}. These $\beta$ values were fitted on the weather benchmark data used in this work and also depend on the data's dimensionality and the hyperparameter ranges searched; they should therefore be read as calibrated to this dataset and re-fitted for substantially different data, even though they broadly track each detector's known computational complexity.
 
 \begin{figure}[H]
 \begin{center}
@@ -1179,25 +1293,20 @@ Figure~\ref{fig:beta_chart} summarizes the fitted $\beta$ per algorithm. IForest
 \label{fig:beta_chart}
 \end{figure}
 
-\subsection{Experiment 3: AutoML vs.\ Neural Architecture Search}\label{sec:autonn_comparison}
+\subsection{Experiment 3: AutoML vs.\ Neural Detector Search}\label{sec:autonn_comparison}
 
-To validate the choice of classical PyOD algorithms over neural network detectors, we ran both approaches on the same five-city dataset, same preprocessing, and same unsupervised objective. Neither sees anomaly labels at any point.
-
-\begin{itemize}
-  \item \textbf{AutoML:} Optuna selects among IForest, LOF, ECOD, HBOS, and COPOD with 25 trials per column.
-  \item \textbf{Auto-NN:} Optuna performs neural architecture search (NAS) over two neural network models, the Autoencoder (AE) and Variational Autoencoder (VAE). It varies hidden layer count, width, activation function, learning rate, epoch count, and batch size, with 25 trials per column (matching AutoML for a direct comparison). One-Class SVM is intentionally excluded because it is not a neural network.
-\end{itemize}
+This experiment uses the setup described in Section~\ref{sec:autonn_setup}: the same five-city dataset, preprocessing, and unsupervised objective, with a single Optuna search of 25 trials per column whose only difference between conditions is the search space, classical PyOD detectors for AutoML versus PyTorch autoencoders (AE/VAE) for Neural HPO.
 
 \subsubsection{Detection Results}
 
-Table~\ref{tab:autonn_summary} and Figure~\ref{fig:autonn_compare} summarize the outcome. AutoML scored higher in 29 of 30 univariate cases and won decisively (margin $> 0.02$) in 27 of those 30. The three near-ties are: London surface pressure (AutoML 0.955 vs.\ Auto-NN 0.935, margin 0.020), New York surface pressure (AutoML 0.934 vs.\ Auto-NN 0.942, where Auto-NN leads by 0.008), and Tokyo temperature (AutoML 0.038 vs.\ Auto-NN 0.027, margin 0.011 with both models scoring very low). In the remaining 27 cases AutoML is decisively ahead, and it runs 9.13$\times$ faster overall on the same trial budget (same 25 trials).
+Table~\ref{tab:autonn_summary} and Figure~\ref{fig:autonn_compare} summarize the outcome. AutoML scored higher in 29 of 30 univariate cases and won decisively (margin $> 0.02$) in 27 of those 30. The three near-ties are: London surface pressure (AutoML 0.955 vs.\ Neural HPO 0.935, margin 0.020), New York surface pressure (AutoML 0.934 vs.\ Neural HPO 0.942, where Neural HPO leads by 0.008), and Tokyo temperature (AutoML 0.038 vs.\ Neural HPO 0.027, margin 0.011 with both models scoring very low). In the remaining 27 cases AutoML is decisively ahead, and it runs 9.13$\times$ faster overall on the same trial budget (same 25 trials).
 
 
 \begin{table}[H]
 \begin{center}
 \begin{tabular}{@{}lcc@{}}
 \toprule
-Metric & AutoML & Auto-NN (AE/VAE) \\
+Metric & AutoML & Neural HPO (AE/VAE) \\
 \midrule
 Mean F2 (univariate)        & \textbf{0.683} & 0.167 \\
 Mean Recall                 & \textbf{0.765} & 0.196 \\
@@ -1206,7 +1315,7 @@ Mean total time / column    & \textbf{2.92 s} & 26.69 s \\
 \bottomrule
 \end{tabular}
 \end{center}
-\caption{AutoML vs.\ Auto-NN aggregate results across 5 cities $\times$ 6 columns.}
+\caption{AutoML vs.\ Neural Hyperparameter Optimization aggregate results across 5 cities $\times$ 6 columns.}
 \label{tab:autonn_summary}
 \end{table}
 
@@ -1241,7 +1350,7 @@ Mean total time / column    & \textbf{2.92 s} & 26.69 s \\
     (0.898,1.4)  (0.130,7.8)  (0.973,1.4)  (0.887,1.4)  (0.968,1.1)  (0.038,2.4)
   };
 \addlegendentry{AutoML}
-%% Auto-NN — one point per city/column pair
+%% Neural HPO — one point per city/column pair
 \addplot[only marks, mark=square*, mark size=2.5pt,
   mark options={fill=colorgray, fill opacity=0.65, draw=colorgray!80!black}]
   coordinates {
@@ -1251,7 +1360,7 @@ Mean total time / column    & \textbf{2.92 s} & 26.69 s \\
     (0.012,27.7)  (0.022,29.2)  (0.030,42.1)  (0.041,19.6)  (0.676,37.1)  (0.012,17.9)
     (0.024,29.0)  (0.013,19.9)  (0.042,36.8)  (0.076,18.8)  (0.789,28.9)  (0.027,35.2)
   };
-\addlegendentry{Auto-NN}
+\addlegendentry{Neural HPO}
 %% Mean markers
 \addplot[only marks, mark=diamond*, mark size=5.5pt,
   mark options={fill=leidenblue, draw=leidenblue!70!black}]
@@ -1267,13 +1376,13 @@ Mean total time / column    & \textbf{2.92 s} & 26.69 s \\
 \end{axis}
 \end{tikzpicture}
 \end{center}
-\caption{F2 score vs.\ training time for all 30 models per approach (one point per city--column pair). AutoML models cluster bottom-right: high F2, low training time. Most Auto-NN models sit top-left: low F2, high training time. The five Auto-NN outliers with high F2 are surface pressure columns, where neural reconstruction is more competitive on quality but remains around $10\times$ slower than AutoML. Filled diamonds mark the mean of each approach.}
+\caption{F2 score vs.\ training time for all 30 models per approach (one point per city--column pair). AutoML models cluster bottom-right: high F2, low training time. Most Neural HPO models sit top-left: low F2, high training time. The five Neural HPO outliers with high F2 are surface pressure columns, where neural reconstruction is more competitive on quality but remains around $10\times$ slower than AutoML. Filled diamonds mark the mean of each approach.}
 \label{fig:autonn_compare}
 \end{figure}
 
 Table~\ref{tab:autonn_full} shows the full per-city, per-column breakdown with measured search time for each approach.
 
-\begin{table}[H]
+\begin{table}[!htbp]
 \begin{center}
 {\footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -1281,7 +1390,7 @@ Table~\ref{tab:autonn_full} shows the full per-city, per-column breakdown with m
 \toprule
 City & Column
   & \multicolumn{3}{c}{AutoML}
-  & \multicolumn{3}{c}{Auto-NN} \\
+  & \multicolumn{3}{c}{Neural HPO} \\
 \cmidrule(lr){3-5}\cmidrule(lr){6-8}
   &  & Model & F2 & Time (s) & Model & F2 & Time (s) \\
 \midrule
@@ -1363,11 +1472,11 @@ Tokyo     & Temp.\ 2m    & COPOD& 0.038 &  2.4 & AE  & 0.027 & 35.2 \\
 
 \textbf{Shift magnitude.} Detection reaches near 100\% for shifts of 10 to 12\% of the column's value range, and drops to around 50 to 70\% for smaller shifts of 4 to 6\%. This threshold is useful for deciding if the model is sensitive enough for a given use case.
 
-\subsection{AutoML vs.\ Auto-NN}
+\subsection{AutoML vs.\ Neural Hyperparameter Optimization}
 
-Surface pressure is the column where neural reconstruction is most competitive, because its tight near-Gaussian distribution makes reconstruction error a relatively reliable anomaly score. The Tokyo temperature near-tie is not a genuine win for either approach, since both score below 0.04 on a column where precipitation-like noise makes any unsupervised model unreliable.
+The detailed scores are reported in Section~\ref{sec:autonn_comparison}. This section focuses on why the two model families behave so differently. Classical detectors win because they match the structure of the problem: LOF, ECOD, HBOS, and COPOD score each point by its local density or tail probability, which is exactly what isolates a point anomaly embedded in a seasonal pattern. Autoencoders instead learn a single global reconstruction mapping and, as discussed in Section~\ref{sec:relwork_nn}, tend to reconstruct anomalies almost as accurately as normal values, so reconstruction error separates the two classes poorly on low-dimensional tabular columns.
 
-The results confirm that AutoML outperforms neural architecture search in 29 of 30 univariate cases. Classical detectors (LOF, ECOD, HBOS, and COPOD) are naturally better suited to this task. They compare each point to its local neighborhood or tail probability rather than learning a global reconstruction mapping, which is exactly what is needed to detect point anomalies embedded in seasonal patterns. Beyond the quality advantage, AutoML is 9.13$\times$ faster overall on the same trial budget, making it the clear practical choice for tabular ETL anomaly detection.
+The few near-ties are consistent with this explanation rather than exceptions to it. Surface pressure is the one column where neural reconstruction is competitive, because its tight, near-Gaussian distribution makes reconstruction error a relatively reliable score. The Tokyo temperature near-tie is not a genuine win for either approach: both score below 0.04 on a column whose precipitation-like noise defeats any unsupervised model. The practical implication is that the higher search cost of the neural models buys no accuracy on this kind of data, so classical AutoML is the appropriate default for tabular ETL anomaly detection.
 
 \subsection{Threshold Calibration and the False-Positive Trade-off}
 
@@ -1393,7 +1502,7 @@ Surface Pressure & ECOD & 0.07\% & 0.946 & 0.02\% & 0.848 & 59\% \\
 Soil Moisture    & LOF  & 0.05\% & 0.966 & 0.04\% & 0.855 & 16\% \\
 \bottomrule
 \end{tabular}
-\caption{False-positive rate and F2 score before and after threshold tuning, averaged across all five cities, each with 20,352 hourly records. Tuned thresholds were determined after the experiment using a script that aimed to balance the false-positive rate and F2 score, with injected anomalies treated as ground truth.}
+\caption{False-positive rate and F2 score before and after threshold tuning, averaged across all five cities, each with 20,352 hourly records. Tuned thresholds were determined after the experiment using a script that aimed to balance the false-positive rate and F2 score, with injected anomalies treated as ground truth. Each FP-rate column is the mean across the five cities, and the FP-reduction column is the mean of the per-city reductions, so it does not equal the change between the two rounded, city-averaged FP-rate columns shown.}
 \label{tab:threshold_summary}
 \end{table}
 
@@ -1420,26 +1529,49 @@ The approach trains one model per column independently. Anomalies that only appe
 
 \subsection{Conclusion}
 
-This thesis investigated whether learning-based anomaly detection is a reliable, low-cost addition to rule-based quality checks in the ingestion layer of ETL pipelines. The experiments confirm that AutoML-based profiling is a practical complement to rule-based checks.
+This thesis investigated whether learning-based anomaly detection is a reliable, low-cost addition to rule-based quality checks at the point where data first enters ETL pipelines. The experiments confirm that AutoML-based profiling is a practical complement to rule-based checks.
 
-\textbf{Effectiveness.} Learning-based profiling detected semantic anomalies that rule-based checks cannot catch. On stable columns such as surface pressure and soil moisture, models trained on one city generalized to all five, achieving F2 scores from 0.93 to 1.00. On noisier columns like temperature, F2 varied widely from 0.04 to 0.79.
+\textbf{Effectiveness.} Machine learning detected statistically unusual values that pass all rule-based checks. On columns with stable, predictable distributions such as surface pressure and soil moisture, the approach achieved strong detection rates across all five cities, with scores from 0.93 to 1.00 (where 1.0 is perfect detection). On noisier columns such as temperature, detection varied widely from 0.04 to 0.79 depending on local climate variability.
 
-\textbf{Practicality.} Integrating the profiling step required minimal changes to the Airflow DAG. Training time grows slowly for algorithms such as Isolation Forest ($\beta = 0.307$), so the overhead stays manageable as data volume increases. LOF grew faster with larger datasets ($\beta = 1.175$), making algorithm choice important for large-scale use. The library is configured with one simple line per column, which keeps the production setup practical.
+\textbf{Practicality.} Integrating the detection step required minimal changes to the existing pipeline configuration. Training time grows slowly for the most scalable algorithm, Isolation Forest, keeping overhead manageable as data volume increases. Algorithm choice matters significantly at scale: the least scalable algorithm takes nearly 15 times longer when data volume grows 10-fold, while the most scalable takes only twice as long. The library is configured with one line per column, keeping the production setup practical.
 
-\textbf{Learning model.} Machine learning outperformed neural architecture search in 29 of 30 settings. AutoML ran 9.13$\times$ faster on average and achieved a 4.1$\times$ higher mean F2 score. Classical models are naturally better suited to point anomaly detection in tabular ETL data than deep models that overfit reconstruction rather than distribution shape.
+\textbf{Learning model.} Classical machine learning outperformed deep learning architecture search in 29 of 30 column-level detection tasks. AutoML ran 9.13$\times$ faster on average and achieved a 4.1$\times$ higher mean F2-score. Simpler statistical models are naturally better suited to detecting individual unusual values in structured tabular data than deep autoencoders, which in this unsupervised setting tend to reconstruct anomalies almost as accurately as normal values and so flag them less reliably.
 
-Together, these results show that AutoML-based adaptive profiling can improve data quality for downstream users at a manageable cost. A small pilot on the target data before production deployment is enough to determine whether the approach is a good fit based on the nature of each column of upstream data.
+Together, these results show that AutoML-based adaptive profiling can improve data quality at a manageable cost. A small pilot on a sample of the target data before full deployment is enough to determine whether the approach is a good fit, based on how stable and predictable each column's values are.
 
 
 \subsection{Further Work}
 
 Evaluating the approach on datasets from domains such as finance, IoT, or e-commerce would establish how well it generalizes beyond weather data.
 
-The evaluation used point anomalies in individual columns. Extending detection to joint anomalies would make predictions more robust and enable multivariate anomaly detection rather than limiting the tool to univariate use.
+The evaluation focused on anomalies in individual columns in isolation. Extending the approach to detect anomalies that only appear as unusual combinations across multiple columns simultaneously would make detection more comprehensive.
 
-Adding automatic drift detection and retraining triggers would enable the system to adapt automatically when upstream source distributions change over time.
+Adding automatic drift detection and retraining triggers would enable the system to adapt automatically when the behavior of the data source changes over time, without manual intervention.
 
 Exposing why a record was flagged would help engineers monitor model decisions and reason about AutoML behavior in production.
+
+The case for placing detection at ingestion rather than downstream rests here on established results from the data-pipeline literature \cite{kothari2026earlyqa, karlas2025navigating, krishnan2016activeclean}. A controlled within-system comparison, running the same detector once at ingestion on raw records and once downstream on the transformed and aggregated warehouse tables, and measuring the resulting difference in detection accuracy and remediation cost, would turn this argument into a direct empirical result for the specific pipeline studied here.
+
+\section*{Declaration of AI Tool Usage}
+\addcontentsline{toc}{section}{Declaration of AI Tool Usage}
+During the preparation of this thesis, the following AI tools were used:
+\begin{itemize}
+  \item \textbf{Claude Code} (Anthropic) was used to assist with experiment
+  setup implementation, including pipeline configuration scripts and development
+  of the Adaptive Profiler library. All code was reviewed, tested, and validated
+  by the author.
+  \item \textbf{Amazon Q} (Amazon Web Services) assisted with AWS service
+  configuration, including S3, IAM, and EC2 setup for the experiment
+  infrastructure. All configurations were reviewed and verified by the author.
+  \item \textbf{Consensus} was used to assist in discovering and summarizing
+  academic literature during the different phases of research. All cited works were
+  independently read and evaluated by the author.
+  \item \textbf{ChatGPT} (OpenAI) was used to improve the language, grammar,
+  and readability of the written text. All content reflects the author's original
+  analysis, findings, and ideas.
+\end{itemize}
+The author takes full responsibility for the accuracy and integrity of all content
+in this thesis.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}
