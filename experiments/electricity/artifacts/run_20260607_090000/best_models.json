@@ -1,0 +1,26 @@
+{
+  "GB:multivariate:ALL_FEATURES": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.02
+    },
+    "best_objective_f2": 0.6054421768707483,
+    "note": "untuned baseline (default hyperparameters, no Optuna search, raw features)"
+  },
+  "GB:univariate:initialDemandOutturn": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.02
+    },
+    "best_objective_f2": 0.7692307692307693,
+    "note": "untuned baseline (default hyperparameters, no Optuna search, raw features)"
+  },
+  "GB:univariate:initialTransmissionSystemDemandOutturn": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.02
+    },
+    "best_objective_f2": 0.7883369330453563,
+    "note": "untuned baseline (default hyperparameters, no Optuna search, raw features)"
+  }
+}

@@ -222,12 +222,14 @@ def run_experiments(
     output_dir: Path,
     tracking_uri: str | None,
     experiment_name: str,
+    data_source: str = "auto",
 ) -> tuple[list[EvalResult], dict[str, Any]]:
     from data_loader import connect_s3_duckdb
     from mlflow_utils import configure_mlflow
 
     configure_mlflow(experiment_name, tracking_uri)
-    con = connect_s3_duckdb()
+    # In local mode we never touch S3, so skip the (network-dependent) httpfs setup.
+    con = None if data_source == "local" else connect_s3_duckdb()
 
     summary_rows: list[EvalResult] = []
     best_models: dict[str, Any] = {}
@@ -236,7 +238,9 @@ def run_experiments(
 
     with start_run(run_name=f"automl_batch_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}", nested=False):
         for city in cities:
-            df_city = fetch_and_cache_city_data(con, bucket, city, start_date, end_date)
+            df_city = fetch_and_cache_city_data(
+                con, bucket, city, start_date, end_date, data_source=data_source
+            )
             if df_city.empty:
                 print(f"[WARN] No data found for city={city}. Skipping.")
                 continue

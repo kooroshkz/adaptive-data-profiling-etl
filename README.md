@@ -33,7 +33,9 @@ This repository contains two separate parts:
 #### To run the experiments:
 
 - Python 3.12
-- ...?
+- The packages in each experiment's own `requirements.txt`
+- No S3 or other accounts (the input data is committed to the repository; use
+  `--data-source local`)
 
 ---
 
@@ -80,7 +82,16 @@ model per city and per column and saves them to S3 under `models/v1/`.
 
 ## Run the experiments
 
-The experiments are independent scripts. They will load data from S3, currently the artifacts is available to bypass the S3 setup and make experiments reproducible and replicable.
+The experiments are independent scripts. By default they read the input data
+from S3. You do **not** need to set up S3 to run them: the input data is
+committed to this repository (under `experiments/data/`), so the experiments can
+run fully offline.
+
+Choose where the data comes from with `--data-source`:
+
+- `--data-source local` – read the committed parquet files. No S3, no network,
+  no credentials. Use this for a reproducible run.
+- `--data-source s3` – read from the S3 bucket (needs AWS credentials).
 
 ### AutoML anomaly detection (weather)
 
@@ -90,7 +101,8 @@ pip install -r experiments/automl/requirements.txt
 python experiments/automl/run_automl.py \
   --cities amsterdam london new_york paris tokyo \
   --scope both \
-  --n-trials 30
+  --n-trials 30 \
+  --data-source local
 ```
 
 Results are written to a timestamped folder under
@@ -104,12 +116,14 @@ pip install -r experiments/autonn/requirements.txt
 python experiments/autonn/run_experiment.py \
   --cities amsterdam london new_york paris tokyo \
   --scope both \
-  --n-trials 30
+  --n-trials 30 \
+  --data-source local
 ```
 
 Results go to `experiments/autonn/artifacts/`.
 
 ### Electricity anomaly detection
+
 
 ```bash
 pip install -r experiments/electricity/requirements.txt
@@ -123,8 +137,6 @@ python experiments/electricity/run_electricity_automl.py
 
 Data is written to `experiments/electricity/data/` and results to
 `experiments/electricity/artifacts/`.
-
-### Helper scripts
 
 ---
 

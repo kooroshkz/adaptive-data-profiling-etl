@@ -19,6 +19,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start-date", default=None, help="Optional start date filter YYYY-MM-DD")
     parser.add_argument("--end-date", default=None, help="Optional end date filter YYYY-MM-DD")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--data-source",
+        choices=["auto", "s3", "local"],
+        default="auto",
+        help="Where to read the input data from. 'local' uses the committed parquet "
+        "files in experiments/data/automl/ and needs no S3 setup.",
+    )
     parser.add_argument("--s3-bucket", default=os.getenv("S3_BUCKET", "weather-data-koorosh-thesis"))
     parser.add_argument("--mlflow-tracking-uri", default=os.getenv("MLFLOW_TRACKING_URI"))
     parser.add_argument("--mlflow-experiment", default=os.getenv("MLFLOW_EXPERIMENT_NAME", "weather_automl"))
@@ -43,6 +50,7 @@ def main() -> None:
         output_dir=output_dir,
         tracking_uri=args.mlflow_tracking_uri,
         experiment_name=args.mlflow_experiment,
+        data_source=args.data_source,
     )
 
     save_outputs(output_dir=output_dir, summary_rows=summary_rows, best_models=best_models)

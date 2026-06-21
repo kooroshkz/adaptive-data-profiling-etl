@@ -22,6 +22,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start-date", default=None)
     parser.add_argument("--end-date", default=None)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--data-source",
+        choices=["auto", "s3", "local"],
+        default="auto",
+        help="Where to read the input data from. 'local' uses the committed parquet "
+        "files in experiments/data/automl/ and needs no S3 setup.",
+    )
     parser.add_argument("--s3-bucket", default=os.getenv("S3_BUCKET", "weather-data-koorosh-thesis"))
     return parser.parse_args()
 
@@ -44,6 +51,7 @@ def main() -> None:
         end_date=args.end_date,
         bucket=args.s3_bucket,
         output_dir=output_dir,
+        data_source=args.data_source,
     )
 
     save_outputs(output_dir=output_dir, summary_rows=summary_rows, best_models=best_models)

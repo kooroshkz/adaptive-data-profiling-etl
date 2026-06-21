@@ -1,0 +1,2 @@
+city,scope,model_name,target_column,precision,recall,f1,f2,n_rows,n_positive_true,n_positive_pred
+amsterdam,multivariate,LOF,ALL_FEATURES,0.6027397260273972,0.2146341463414634,0.31654676258992803,0.24636058230683092,20352,205,73

@@ -1,0 +1,28 @@
+{
+  "GB:multivariate:ALL_FEATURES": {
+    "model": "IForest",
+    "params": {
+      "contamination": 0.024350525503093797,
+      "n_estimators": 200,
+      "max_samples": 0.5163214193051527
+    },
+    "best_objective_f2": 0.9251101321585903
+  },
+  "GB:univariate:initialDemandOutturn": {
+    "model": "HBOS",
+    "params": {
+      "contamination": 0.017785132286056337,
+      "n_bins": 5,
+      "alpha": 0.044489492199501594,
+      "tol": 0.8779967825772894
+    },
+    "best_objective_f2": 1.0
+  },
+  "GB:univariate:initialTransmissionSystemDemandOutturn": {
+    "model": "ECOD",
+    "params": {
+      "contamination": 0.011233625925438443
+    },
+    "best_objective_f2": 0.8050847457627118
+  }
+}

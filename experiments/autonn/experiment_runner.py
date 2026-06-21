@@ -218,15 +218,17 @@ def run_experiments(
     end_date: str | None,
     bucket: str,
     output_dir: Path,
+    data_source: str = "auto",
 ) -> tuple[list[EvalResult], dict[str, Any]]:
-    con = connect_s3_duckdb()
+    # In local mode we never touch S3, so skip the (network-dependent) httpfs setup.
+    con = None if data_source == "local" else connect_s3_duckdb()
     summary_rows: list[EvalResult] = []
     best_models: dict[str, Any] = {}
 
     requested_scopes = [scope] if scope in {"multivariate", "univariate"} else ["multivariate", "univariate"]
 
     for city in cities:
-        df_city = fetch_city_data(con, bucket, city, start_date, end_date)
+        df_city = fetch_city_data(con, bucket, city, start_date, end_date, data_source=data_source)
         if df_city.empty:
             print(f"[WARN] No data for city={city}, skipping.")
             continue

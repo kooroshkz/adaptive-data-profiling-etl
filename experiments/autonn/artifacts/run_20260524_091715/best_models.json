@@ -1,0 +1,642 @@
+{
+  "amsterdam:multivariate:ALL_FEATURES": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.009116193748576387,
+      "nu": 0.004541881310134269,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.36764705882352944,
+    "train_time_s": 0.0438,
+    "infer_time_s": 0.03967,
+    "search_time_s": 8.8661,
+    "total_time_s": 8.9099
+  },
+  "amsterdam:univariate:temperature_2m": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.19054969780007425,
+      "n_layers": 3,
+      "layer_width": 9,
+      "activation": "elu",
+      "lr": 0.00020156937243694814,
+      "epochs": 22,
+      "batch_size": 512
+    },
+    "hidden_dims": [
+      9,
+      4,
+      2
+    ],
+    "best_objective_f2": 0.02700617283950617,
+    "train_time_s": 0.3727,
+    "infer_time_s": 0.000931,
+    "search_time_s": 9.8145,
+    "total_time_s": 10.1872
+  },
+  "amsterdam:univariate:apparent_temperature": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.01956661354644642,
+      "nu": 0.05943176207886525,
+      "gamma_mode": "float",
+      "gamma_val": 0.02578254153018897,
+      "gamma": 0.02578254153018897
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.03968253968253968,
+    "train_time_s": 0.1033,
+    "infer_time_s": 0.093471,
+    "search_time_s": 14.5038,
+    "total_time_s": 14.6071
+  },
+  "amsterdam:univariate:precipitation": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.15255065745117377,
+      "n_layers": 3,
+      "layer_width": 14,
+      "activation": "elu",
+      "lr": 0.00017541893487450815,
+      "epochs": 60,
+      "batch_size": 256
+    },
+    "hidden_dims": [
+      14,
+      7,
+      3
+    ],
+    "best_objective_f2": 0.02420135527589545,
+    "train_time_s": 1.5263,
+    "infer_time_s": 0.001029,
+    "search_time_s": 14.8728,
+    "total_time_s": 16.3991
+  },
+  "amsterdam:univariate:surface_pressure": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.006680983417211186,
+      "n_layers": 1,
+      "layer_width": 15,
+      "activation": "relu",
+      "lr": 0.0004470608546778491,
+      "epochs": 79,
+      "batch_size": 256
+    },
+    "hidden_dims": [
+      15
+    ],
+    "best_objective_f2": 0.8461538461538461,
+    "train_time_s": 1.6548,
+    "infer_time_s": 0.000223,
+    "search_time_s": 12.5894,
+    "total_time_s": 14.2442
+  },
+  "amsterdam:univariate:soil_temperature_7_to_28cm": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.041327513893928226,
+      "n_layers": 3,
+      "layer_width": 8,
+      "activation": "tanh",
+      "lr": 0.0022747465420843624,
+      "epochs": 38,
+      "batch_size": 128
+    },
+    "hidden_dims": [
+      8,
+      4,
+      2
+    ],
+    "best_objective_f2": 0.06191950464396285,
+    "train_time_s": 1.5342,
+    "infer_time_s": 0.000786,
+    "search_time_s": 8.9285,
+    "total_time_s": 10.4627
+  },
+  "amsterdam:univariate:soil_moisture_7_to_28cm": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.0010216264543353166,
+      "nu": 0.03375746637415966,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.15789473684210525,
+    "train_time_s": 0.0633,
+    "infer_time_s": 0.054836,
+    "search_time_s": 5.7629,
+    "total_time_s": 5.8262
+  },
+  "london:multivariate:ALL_FEATURES": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.006620642015198968,
+      "nu": 0.004430357105538922,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.31456953642384106,
+    "train_time_s": 0.0487,
+    "infer_time_s": 0.045101,
+    "search_time_s": 11.1179,
+    "total_time_s": 11.1667
+  },
+  "london:univariate:temperature_2m": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.06324144789301883,
+      "nu": 0.025205610991902834,
+      "gamma_mode": "float",
+      "gamma_val": 0.0017285984973383222,
+      "gamma": 0.0017285984973383222
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.031446540880503145,
+    "train_time_s": 0.0489,
+    "infer_time_s": 0.038637,
+    "search_time_s": 5.2739,
+    "total_time_s": 5.3228
+  },
+  "london:univariate:apparent_temperature": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.009860942908083906,
+      "nu": 0.004678719265016202,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.03225806451612903,
+    "train_time_s": 0.0409,
+    "infer_time_s": 0.036245,
+    "search_time_s": 9.2742,
+    "total_time_s": 9.3151
+  },
+  "london:univariate:precipitation": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.02385234757844707,
+      "n_layers": 1,
+      "layer_width": 6,
+      "activation": "tanh",
+      "lr": 0.00010994335574766199,
+      "epochs": 98,
+      "batch_size": 128
+    },
+    "hidden_dims": [
+      6
+    ],
+    "best_objective_f2": 0.0,
+    "train_time_s": 3.0533,
+    "infer_time_s": 0.000209,
+    "search_time_s": 14.0147,
+    "total_time_s": 17.068
+  },
+  "london:univariate:surface_pressure": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.005747473954395584,
+      "nu": 0.02588682656074846,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.946969696969697,
+    "train_time_s": 0.061,
+    "infer_time_s": 0.053266,
+    "search_time_s": 10.6961,
+    "total_time_s": 10.757
+  },
+  "london:univariate:soil_temperature_7_to_28cm": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.006620642015198968,
+      "nu": 0.004430357105538922,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.10752688172043011,
+    "train_time_s": 0.0209,
+    "infer_time_s": 0.01767,
+    "search_time_s": 5.1514,
+    "total_time_s": 5.1723
+  },
+  "london:univariate:soil_moisture_7_to_28cm": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.05983542473217019,
+      "nu": 0.002865832106246123,
+      "gamma_mode": "float",
+      "gamma_val": 0.21545535601027507,
+      "gamma": 0.21545535601027507
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.07462686567164178,
+    "train_time_s": 0.0076,
+    "infer_time_s": 0.006483,
+    "search_time_s": 10.9592,
+    "total_time_s": 10.9667
+  },
+  "new_york:multivariate:ALL_FEATURES": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.004915963769370817,
+      "nu": 0.006445459956128235,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.3767123287671233,
+    "train_time_s": 0.0426,
+    "infer_time_s": 0.039315,
+    "search_time_s": 8.3362,
+    "total_time_s": 8.3788
+  },
+  "new_york:univariate:temperature_2m": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.1602506766156625,
+      "nu": 0.0011513672594312162,
+      "gamma_mode": "float",
+      "gamma_val": 0.24251500783469307,
+      "gamma": 0.24251500783469307
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.018832391713747645,
+    "train_time_s": 0.0091,
+    "infer_time_s": 0.008035,
+    "search_time_s": 5.0882,
+    "total_time_s": 5.0973
+  },
+  "new_york:univariate:apparent_temperature": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.009860942908083906,
+      "nu": 0.004678719265016202,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.03496503496503497,
+    "train_time_s": 0.0406,
+    "infer_time_s": 0.036562,
+    "search_time_s": 5.1886,
+    "total_time_s": 5.2292
+  },
+  "new_york:univariate:precipitation": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.05001419780258425,
+      "n_layers": 1,
+      "layer_width": 7,
+      "activation": "tanh",
+      "lr": 0.0001169558442567087,
+      "epochs": 22,
+      "batch_size": 128
+    },
+    "hidden_dims": [
+      7
+    ],
+    "best_objective_f2": 0.02506265664160401,
+    "train_time_s": 0.6993,
+    "infer_time_s": 0.000282,
+    "search_time_s": 13.6701,
+    "total_time_s": 14.3694
+  },
+  "new_york:univariate:surface_pressure": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.0037801503907510738,
+      "n_layers": 2,
+      "layer_width": 5,
+      "activation": "leaky_relu",
+      "lr": 0.0017892816094565885,
+      "epochs": 100,
+      "batch_size": 128
+    },
+    "hidden_dims": [
+      5,
+      2
+    ],
+    "best_objective_f2": 0.9663865546218487,
+    "train_time_s": 4.1492,
+    "infer_time_s": 0.000558,
+    "search_time_s": 12.0242,
+    "total_time_s": 16.1734
+  },
+  "new_york:univariate:soil_temperature_7_to_28cm": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.006680983417211186,
+      "n_layers": 1,
+      "layer_width": 15,
+      "activation": "relu",
+      "lr": 0.0004470608546778491,
+      "epochs": 79,
+      "batch_size": 256
+    },
+    "hidden_dims": [
+      15
+    ],
+    "best_objective_f2": 0.03787878787878788,
+    "train_time_s": 1.6639,
+    "infer_time_s": 0.000223,
+    "search_time_s": 9.1288,
+    "total_time_s": 10.7928
+  },
+  "new_york:univariate:soil_moisture_7_to_28cm": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.0015200809077270817,
+      "n_layers": 2,
+      "layer_width": 16,
+      "activation": "leaky_relu",
+      "lr": 0.006536264082965736,
+      "epochs": 21,
+      "batch_size": 512
+    },
+    "hidden_dims": [
+      16,
+      8
+    ],
+    "best_objective_f2": 0.10638297872340426,
+    "train_time_s": 0.1884,
+    "infer_time_s": 0.000622,
+    "search_time_s": 6.0736,
+    "total_time_s": 6.262
+  },
+  "paris:multivariate:ALL_FEATURES": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.006446745257924971,
+      "n_layers": 1,
+      "layer_width": 72,
+      "activation": "elu",
+      "lr": 0.0021223297272287135,
+      "epochs": 38,
+      "batch_size": 512
+    },
+    "hidden_dims": [
+      72
+    ],
+    "best_objective_f2": 0.2910958904109589,
+    "train_time_s": 0.3646,
+    "infer_time_s": 0.000828,
+    "search_time_s": 10.8414,
+    "total_time_s": 11.2061
+  },
+  "paris:univariate:temperature_2m": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.01811326544803337,
+      "n_layers": 1,
+      "layer_width": 16,
+      "activation": "tanh",
+      "lr": 0.0069782812651260325,
+      "epochs": 27,
+      "batch_size": 512
+    },
+    "hidden_dims": [
+      16
+    ],
+    "best_objective_f2": 0.02702702702702703,
+    "train_time_s": 0.1454,
+    "infer_time_s": 0.00055,
+    "search_time_s": 7.0777,
+    "total_time_s": 7.2231
+  },
+  "paris:univariate:apparent_temperature": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.029133955052801898,
+      "n_layers": 1,
+      "layer_width": 10,
+      "activation": "relu",
+      "lr": 0.00028681134821030097,
+      "epochs": 26,
+      "batch_size": 512
+    },
+    "hidden_dims": [
+      10
+    ],
+    "best_objective_f2": 0.03389830508474576,
+    "train_time_s": 0.3053,
+    "infer_time_s": 0.000193,
+    "search_time_s": 8.8223,
+    "total_time_s": 9.1276
+  },
+  "paris:univariate:precipitation": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.15255065745117377,
+      "n_layers": 3,
+      "layer_width": 14,
+      "activation": "elu",
+      "lr": 0.00017541893487450815,
+      "epochs": 60,
+      "batch_size": 256
+    },
+    "hidden_dims": [
+      14,
+      7,
+      3
+    ],
+    "best_objective_f2": 0.011655011655011656,
+    "train_time_s": 1.5458,
+    "infer_time_s": 0.000935,
+    "search_time_s": 13.7011,
+    "total_time_s": 15.2469
+  },
+  "paris:univariate:surface_pressure": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.005747473954395584,
+      "nu": 0.02588682656074846,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.9051724137931034,
+    "train_time_s": 0.076,
+    "infer_time_s": 0.067494,
+    "search_time_s": 10.7219,
+    "total_time_s": 10.7979
+  },
+  "paris:univariate:soil_temperature_7_to_28cm": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.0031716673470678675,
+      "n_layers": 2,
+      "layer_width": 6,
+      "activation": "relu",
+      "lr": 0.0007185207399071083,
+      "epochs": 69,
+      "batch_size": 256
+    },
+    "hidden_dims": [
+      6,
+      3
+    ],
+    "best_objective_f2": 0.09345794392523364,
+    "train_time_s": 1.6381,
+    "infer_time_s": 0.000768,
+    "search_time_s": 10.2291,
+    "total_time_s": 11.8672
+  },
+  "paris:univariate:soil_moisture_7_to_28cm": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.0012277440743282356,
+      "nu": 0.02806056271395425,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.052083333333333336,
+    "train_time_s": 0.0528,
+    "infer_time_s": 0.046084,
+    "search_time_s": 5.4989,
+    "total_time_s": 5.5517
+  },
+  "tokyo:multivariate:ALL_FEATURES": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.005897467395685554,
+      "nu": 0.012238525827319158,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.2,
+    "train_time_s": 0.0447,
+    "infer_time_s": 0.040199,
+    "search_time_s": 8.3129,
+    "total_time_s": 8.3576
+  },
+  "tokyo:univariate:temperature_2m": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.08719989258744304,
+      "n_layers": 2,
+      "layer_width": 8,
+      "activation": "elu",
+      "lr": 0.00020601479881412525,
+      "epochs": 72,
+      "batch_size": 256
+    },
+    "hidden_dims": [
+      8,
+      4
+    ],
+    "best_objective_f2": 0.023006134969325152,
+    "train_time_s": 1.1533,
+    "infer_time_s": 0.000619,
+    "search_time_s": 9.3825,
+    "total_time_s": 10.5358
+  },
+  "tokyo:univariate:apparent_temperature": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.0050187419846600394,
+      "n_layers": 2,
+      "layer_width": 13,
+      "activation": "relu",
+      "lr": 0.00010110693868786099,
+      "epochs": 76,
+      "batch_size": 256
+    },
+    "hidden_dims": [
+      13,
+      6
+    ],
+    "best_objective_f2": 0.038461538461538464,
+    "train_time_s": 1.3089,
+    "infer_time_s": 0.000798,
+    "search_time_s": 10.9904,
+    "total_time_s": 12.2993
+  },
+  "tokyo:univariate:precipitation": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.08725660060472247,
+      "n_layers": 2,
+      "layer_width": 10,
+      "activation": "leaky_relu",
+      "lr": 0.0005643618599765438,
+      "epochs": 57,
+      "batch_size": 256
+    },
+    "hidden_dims": [
+      10,
+      5
+    ],
+    "best_objective_f2": 0.016233766233766232,
+    "train_time_s": 0.9181,
+    "infer_time_s": 0.000537,
+    "search_time_s": 13.5569,
+    "total_time_s": 14.475
+  },
+  "tokyo:univariate:surface_pressure": {
+    "model": "OCSVM",
+    "params": {
+      "contamination": 0.003338564498306404,
+      "nu": 0.1600496799772316,
+      "gamma_mode": "scale",
+      "gamma": "scale"
+    },
+    "hidden_dims": null,
+    "best_objective_f2": 0.9770114942528736,
+    "train_time_s": 0.2654,
+    "infer_time_s": 0.241351,
+    "search_time_s": 5.6803,
+    "total_time_s": 5.9457
+  },
+  "tokyo:univariate:soil_temperature_7_to_28cm": {
+    "model": "AE",
+    "params": {
+      "contamination": 0.001765662003013001,
+      "n_layers": 2,
+      "layer_width": 10,
+      "activation": "tanh",
+      "lr": 0.002293902206222694,
+      "epochs": 50,
+      "batch_size": 512
+    },
+    "hidden_dims": [
+      10,
+      5
+    ],
+    "best_objective_f2": 0.0641025641025641,
+    "train_time_s": 0.514,
+    "infer_time_s": 0.000557,
+    "search_time_s": 6.6581,
+    "total_time_s": 7.1721
+  },
+  "tokyo:univariate:soil_moisture_7_to_28cm": {
+    "model": "VAE",
+    "params": {
+      "contamination": 0.037708305451627254,
+      "n_layers": 2,
+      "layer_width": 9,
+      "activation": "relu",
+      "lr": 0.0015168735523025366,
+      "epochs": 20,
+      "batch_size": 512
+    },
+    "hidden_dims": [
+      9,
+      4
+    ],
+    "best_objective_f2": 0.05084745762711865,
+    "train_time_s": 0.2776,
+    "infer_time_s": 0.000652,
+    "search_time_s": 7.689,
+    "total_time_s": 7.9666
+  }
+}

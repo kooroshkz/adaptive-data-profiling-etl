@@ -63,6 +63,48 @@ def cache_dir() -> Path:
     return path
 
 
+def committed_data_dir() -> Path:
+    """Directory of committed per-city parquet files used for offline/reproducible runs.
+
+    These files are checked into the repository so the experiments can run without
+    any S3 setup (use ``--data-source local``).
+    """
+    return Path(__file__).resolve().parent.parent / "data" / "automl"
+
+
+def committed_city_path(city: str) -> Path:
+    return committed_data_dir() / f"{city}_all_all.parquet"
+
+
+def load_city_data_from_committed(
+    city: str,
+    start_date: str | None,
+    end_date: str | None,
+) -> pd.DataFrame:
+    """Read a city's data from the committed parquet files (no S3, no network)."""
+    path = committed_city_path(city)
+    if not path.exists():
+        return pd.DataFrame()
+
+    date_filters = ""
+    params: list[str] = []
+    if start_date:
+        date_filters += " AND CAST(time AS DATE) >= CAST(? AS DATE)"
+        params.append(start_date)
+    if end_date:
+        date_filters += " AND CAST(time AS DATE) <= CAST(? AS DATE)"
+        params.append(end_date)
+
+    con = duckdb.connect(":memory:")
+    query = f"""
+        SELECT *
+        FROM read_parquet('{path.as_posix()}')
+        WHERE time IS NOT NULL{date_filters}
+        ORDER BY time
+    """
+    return con.execute(query, params).fetch_df()
+
+
 def cached_city_path(city: str, start_date: str | None, end_date: str | None) -> Path:
     start_part = start_date or "all"
     end_part = end_date or "all"
@@ -167,13 +209,28 @@ def load_city_data_from_s3(
 
 
 def fetch_and_cache_city_data(
-    con: duckdb.DuckDBPyConnection,
+    con: duckdb.DuckDBPyConnection | None,
     bucket: str,
     city: str,
     start_date: str | None,
     end_date: str | None,
+    data_source: str = "auto",
 ) -> pd.DataFrame:
-    if has_s3_credentials():
+    """Load a city's data.
+
+    data_source:
+      - "local": read only the committed parquet files (no S3, no network).
+      - "s3":    read only from S3 (requires AWS credentials).
+      - "auto":  use S3 when credentials are available, otherwise fall back to the
+                 local raw parquet mirror under airflow/data/raw.
+    """
+    if data_source == "local":
+        print(f"[INFO] Reading committed local data for city={city}.")
+        return load_city_data_from_committed(city, start_date, end_date)
+
+    if data_source == "s3":
+        df_city = load_city_data_from_s3(con, bucket, city, start_date, end_date)
+    elif has_s3_credentials():
         try:
             df_city = load_city_data_from_s3(con, bucket, city, start_date, end_date)
         except duckdb.HTTPException as exc:

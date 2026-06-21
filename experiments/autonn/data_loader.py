@@ -58,6 +58,45 @@ def cache_dir() -> Path:
     return path
 
 
+def committed_city_path(city: str) -> Path:
+    """Committed per-city parquet shared with the automl experiment.
+
+    These files are checked into the repository so the experiment can run without
+    any S3 setup (use ``--data-source local``).
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    return repo_root / "experiments" / "data" / "automl" / f"{city}_all_all.parquet"
+
+
+def load_city_data_from_committed(
+    city: str,
+    start_date: str | None,
+    end_date: str | None,
+) -> pd.DataFrame:
+    """Read a city's data from the committed parquet files (no S3, no network)."""
+    path = committed_city_path(city)
+    if not path.exists():
+        return pd.DataFrame()
+
+    date_filters = ""
+    params: list[str] = []
+    if start_date:
+        date_filters += " AND CAST(time AS DATE) >= CAST(? AS DATE)"
+        params.append(start_date)
+    if end_date:
+        date_filters += " AND CAST(time AS DATE) <= CAST(? AS DATE)"
+        params.append(end_date)
+
+    con = duckdb.connect(":memory:")
+    query = f"""
+        SELECT *
+        FROM read_parquet('{path.as_posix()}')
+        WHERE time IS NOT NULL{date_filters}
+        ORDER BY time
+    """
+    return con.execute(query, params).fetch_df()
+
+
 def load_city_data_from_local(
     city: str,
     start_date: str | None,
@@ -135,12 +174,28 @@ def load_city_data_from_s3(
 
 
 def fetch_city_data(
-    con: duckdb.DuckDBPyConnection,
+    con: duckdb.DuckDBPyConnection | None,
     bucket: str,
     city: str,
     start_date: str | None,
     end_date: str | None,
+    data_source: str = "auto",
 ) -> pd.DataFrame:
+    """Load a city's data.
+
+    data_source:
+      - "local": read only the committed parquet files (no S3, no network).
+      - "s3":    read only from S3 (requires AWS credentials).
+      - "auto":  use S3 when credentials are available, otherwise fall back to the
+                 local raw parquet mirror under airflow/data/raw.
+    """
+    if data_source == "local":
+        print(f"[INFO] Reading committed local data for city={city}.")
+        return load_city_data_from_committed(city, start_date, end_date)
+
+    if data_source == "s3":
+        return load_city_data_from_s3(con, bucket, city, start_date, end_date)
+
     if has_s3_credentials():
         try:
             df = load_city_data_from_s3(con, bucket, city, start_date, end_date)

@@ -1,0 +1,6 @@
+model,mean_single_trial_s,median_single_trial_s,max_single_trial_s,mean_estimated_search_s,n_trials
+COPOD,0.0082,0.0052,0.0305,0.2039,25
+ECOD,0.0094,0.0054,0.0442,0.2356,25
+HBOS,0.0135,0.0012,0.2562,0.3375,25
+IForest,0.3721,0.3954,0.4919,9.3024,25
+LOF,0.3111,0.0494,1.5522,7.7786,25
