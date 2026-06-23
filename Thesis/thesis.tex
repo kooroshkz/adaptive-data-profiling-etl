@@ -88,16 +88,16 @@
 \textbf{Background.} Organisations processing large volumes of data on a continuous basis rely on Extract-Transform-Load (ETL) pipelines to meet non-functional requirements such as scalability, high throughput, and reliability. These automated systems extract data from external sources, transform and clean it, and load it into storage for analysis and business decisions. Contemporary ETL pipelines use rule-based quality checks to catch data errors, but such checks often fail to detect subtler problems, such as values that appear valid yet sit far outside the historical norm, before bad data reaches the systems that depend on it.
 
 \noindent
-\textbf{Aim.} This thesis investigates whether machine learning can automatically learn what normal data looks like and reliably flag deviations, serving as a low-cost complement to rule-based checks at the point where data first enters an ETL pipeline.
+\textbf{Aim.} This thesis investigates whether machine learning can automatically learn what normal data looks like and reliably flag deviations, serving as a low-cost complement to rule-based checks at the point where data first enters the pipeline.
 
 \noindent
-\textbf{Method.} We built and deployed a complete ETL pipeline processing hourly weather and electricity data, with artificial anomalies injected at known positions to measure detection accuracy and computational cost. We evaluated two automated approaches, both driven by the Optuna optimisation framework: classical machine learning model selection (AutoML), which searches over the PyOD anomaly detectors, and Neural Hyperparameter Optimization (Neural HPO), which searches over PyTorch autoencoders.
+\textbf{Method.} We built and deployed a complete ETL pipeline processing hourly weather and electricity data, with artificial anomalies injected at known positions to measure detection accuracy and computational cost. We evaluated two automated approaches: classical machine learning model selection (AutoML) and Neural Hyperparameter Optimization (Neural HPO).
 
 \noindent
 \textbf{Results.} AutoML reliably detected anomalies on columns with predictable distributions at low computational cost. Compared to Neural Hyperparameter Optimization, it ran 9.13$\times$ faster and achieved a 4.1$\times$ higher mean F2-score. Deep learning models added complexity without improving detection quality.
 
 \noindent
-\textbf{Conclusion.} AutoML-based anomaly detection is a practical complement to rule-based checks in ETL pipelines. Its effectiveness and cost depend strongly on the nature of the incoming data, making it well-suited for columns with stable, predictable distributions and less effective for noisy or irregular ones.
+\textbf{Conclusion.} AutoML-based anomaly detection is a practical complement to rule-based checks in data pipelines. Its effectiveness and cost depend strongly on the nature of the incoming data, making it well-suited for columns with stable, predictable distributions and less effective for noisy or irregular ones.
 \end{abstract}
 
 
@@ -231,12 +231,9 @@ Rule-based quality checks exist, but subtle anomalies still pass through pipelin
 
 Recent industry work \cite{databricks2025aietl} shows that AI-driven ETL systems can automatically learn what normal data looks like and detect deviations before they reach downstream systems. Problems get caught earlier, before they propagate.
 
-One main motivation is the principle of \emph{shift-left} data quality: validating data as early as possible in the pipeline, ideally at the point where it first enters \cite{datakitchen2023shiftleft}. The same idea has long been part of software engineering practice, where defects are generally cheaper to address the earlier in the lifecycle they are caught. If a bad record enters the pipeline, every transformation that follows inherits the defect, and by the time it reaches an aggregated report or a trained model it can be impossible to trace which source record caused the problem. Recent work argues that \emph{when} validation happens, not only which method is used, determines both the final error rate and the cost of correction: Kothari et al.\ \cite{kothari2026earlyqa} model validation timing as a measurable design variable and show that catching errors before they propagate is substantially cheaper than catching them after downstream stages have consumed them, while Karlas et al.\ \cite{karlas2025navigating} show that data errors compound as they move through the stages of a machine learning pipeline, so an error's impact depends strongly on where it is caught. This is consistent with the broader data-centric view that data quality should be treated as a first-class concern across the pipeline rather than patched downstream \cite{whang2023datacentric}.
+One main motivation is the principle of \emph{shift-left} data quality: validating data as early as possible in the pipeline, ideally at the point where it first enters \cite{datakitchen2023shiftleft}. The same idea has long been part of software engineering practice, where defects are generally cheaper to address the earlier in the lifecycle they are caught. If a bad record enters the pipeline, every transformation that follows inherits the defect. Worse, once a transformation aggregates or summarizes the data, the bad value is permanently baked into the stored result and can no longer be removed downstream, and by the time it reaches an aggregated report or a trained model it can be impossible to trace which source record caused the problem. Recent work argues that \emph{when} validation happens, not only which method is used, determines both the final error rate and the cost of correction: Kothari et al.\ \cite{kothari2026earlyqa} model validation timing as a measurable design variable and show that catching errors before they propagate is substantially cheaper than catching them after downstream stages have consumed them, while Karlas et al.\ \cite{karlas2025navigating} show that data errors compound as they move through the stages of a machine learning pipeline, so an error's impact depends strongly on where it is caught. This is consistent with the broader data-centric view that data quality should be treated as a first-class concern across the pipeline rather than patched downstream \cite{whang2023datacentric}.
 
-The other motivation is to reduce the cost of computation for high-quality data delivery by applying outlier detection once, rather than repeatedly by different downstream users. The benefit of acting early is not only lower cost: the ActiveClean project \cite{krishnan2016activeclean} shows that dirty data systematically biases downstream model parameters, and that cleaning earlier in the pipeline gives up to 2.5 times better model accuracy for the same cleaning budget, while HoloClean \cite{rekatsinas2017holoclean} shows the broader trend away from pure rule-based quality toward learning-based approaches. In practice, many data teams skip anomaly detection entirely due to the engineering effort and domain expertise required \cite{tu2023autovalidate}.
-
-Anomaly detection itself is a well-researched field, with a large body of work on both classical and deep methods \cite{chandola2009anomaly, han2022adbench}. The contribution of this thesis is therefore not a new detection algorithm but where the detection runs and how it is operated: we place per-column unsupervised detection at the ingestion stage of an ETL pipeline, before any transformation or loading, and we automate model selection so that no manual rule-writing or specialist tuning is needed. To make the approach reusable beyond the experiments reported here, we built it into an open-source Python library, the Adaptive Profiler, which we released on PyPI and GitHub \cite{repoadaptiveprofiler2026}.
-
+The other motivation is to reduce the cost of computation for high-quality data delivery by applying outlier detection once, rather than repeatedly by different downstream users. The benefit of acting early is not only lower cost: the ActiveClean project \cite{krishnan2016activeclean} shows that dirty data systematically biases downstream model parameters, and that cleaning earlier in the pipeline gives up to 2.5 times better model accuracy for the same cleaning budget, while HoloClean \cite{rekatsinas2017holoclean} shows the broader trend away from pure rule-based quality toward learning-based approaches. In practice, many data teams skip anomaly detection entirely due to the engineering effort and domain expertise required~\cite{tu2023autovalidate}.
 \subsection{Research Questions}
 
 The main research question is:
@@ -265,7 +262,7 @@ Throughout this thesis, the term \textbf{adaptive data profiling} refers to a qu
 \section{Background}\label{sec:background}
 % ============================================================
 
-This section introduces the concepts the rest of the thesis builds on: how data pipelines and ETL processes work in practice, why data quality is hard to guarantee, the case for validating data early, and the unsupervised anomaly detection and AutoML techniques used in the system.
+Several concepts underpin the rest of the thesis: how data pipelines work in practice, what data quality means in ETL pipelines, the case for validating data early at the point of ingestion (shift-left), unsupervised anomaly detection, and automated machine learning with hyperparameter optimization. Each is covered in turn below.
 
 \subsection{Data Pipelines in Practice}
 
@@ -307,6 +304,8 @@ Sculley et al. \cite{sculley2015hidden} showed that hidden technical debt in ML 
 
 ``Shift-left'' means validating data as early as possible in the pipeline, ideally at the point of ingestion. The principle has long been part of software engineering practice, where defects are generally cheaper to address the earlier in the lifecycle they are caught \cite{datakitchen2023shiftleft}. The same logic transfers to data pipelines: a defect that enters at ingestion passes through every transformation after that, and by the time it reaches an aggregated report, it may be impossible to identify which source record caused the problem.
 
+This argument becomes decisive when the Transform step is irreversible. Many transformations aggregate or summarize records, for example by computing a daily average, a running total, or a downsampled rollup. Once a bad value has been folded into such an aggregate, it is permanently incorporated into the stored data and can no longer be isolated or removed downstream: the only remedies are to discard the entire aggregate or to recompute it from the raw records, assuming those raw records are even still available. Catching the error before this step is therefore not merely cheaper, it is the last point at which the error can be removed at all.
+
 Crucially, recent work argues that the timing of validation, not only the method used, determines both the final error rate and the cost of correction. Kothari et al.\ \cite{kothari2026earlyqa} formalise validation timing as a measurable design variable through an error-propagation model and show, drawing on the software-engineering evidence, that catching errors before they propagate is substantially cheaper than catching them after downstream stages have already consumed them. Karlas et al.\ \cite{karlas2025navigating} similarly emphasise that data errors compound as they move through the stages of a modern ML pipeline, so the impact of an error depends strongly on where in the pipeline it is caught. This is consistent with the broader data-centric view that data quality must be treated as a first-class concern across the pipeline rather than patched downstream \cite{whang2023datacentric}.
 
 Detecting the problem at the point of ingestion stops this propagation immediately. The flagged record can be reported upstream for validation, excluded from aggregations, or filtered before reaching downstream consumers. Doing it once at ingestion also avoids each downstream consumer having to independently detect and handle the same defect. This motivates placing data-quality checks as early as possible in the pipeline, including at ingestion when the relevant error signals are available. Industry discussions of shift-left data quality make this argument explicitly, while recent research on annotation QA and ML-pipeline errors supports the broader point that validation timing and error propagation matter \cite{datakitchen2023shiftleft, kothari2026earlyqa, karlas2025navigating}.
@@ -316,9 +315,9 @@ Detecting the problem at the point of ingestion stops this propagation immediate
 Unsupervised anomaly detection identifies unusual data points without labeled training data \cite{chandola2009anomaly}. The idea is to train a model on historical data to learn what normal looks like, then score new records based on how well they fit that learned distribution. Records that deviate significantly get a high anomaly score.
 
 
-We selected PyOD over H2O AutoML, AutoGluon, and PyCaret for its targeted unsupervised detection models and simple integration into the Adaptive Profiling library.
+We selected PyOD \cite{zhao2019pyod}, an open-source Python library that implements a wide range of outlier-detection algorithms behind a single API, over the broader AutoML libraries H2O AutoML, AutoGluon, and PyCaret for its targeted unsupervised detection models and simple integration into the Adaptive Profiling library.
 
-Four algorithms from the PyOD library \cite{zhao2019pyod} were selected by Optuna across all trained models in this project:
+Four algorithms from PyOD were selected by Optuna, a hyperparameter optimization framework that automatically searches for the best-performing model and configuration (detailed in Section~\ref{sec:automl}), across all trained models in this project:
 
 \textbf{Local Outlier Factor (LOF)} \cite{breunig2000lof} measures the local density of a point compared to its neighbors. Points in less crowded areas than their neighbors get high anomaly scores. It is effective for contextual anomalies and scales super-linearly with data size.
 
@@ -330,7 +329,7 @@ Four algorithms from the PyOD library \cite{zhao2019pyod} were selected by Optun
 
 Campos et al. \cite{campos2016evaluation} show that no single algorithm dominates across all datasets. The right choice depends on the data, which is why automated model selection is important.
 
-\subsection{AutoML and Hyperparameter Optimization}
+\subsection{AutoML and Hyperparameter Optimization}\label{sec:automl}
 
 AutoML refers to automating the selection of algorithms and their hyperparameters so that building a model requires little manual tuning or specialist intervention \cite{he2021automl}. Instead of manually choosing among Isolation Forest \cite{liu2008isolationforest}, LOF, ECOD, HBOS, and COPOD, and tuning each configuration by hand, an optimization framework searches the space of possible configurations automatically. Such automated search has been shown to find good configurations far more efficiently than manual or grid search \cite{bergstra2012random}.
 
@@ -341,7 +340,7 @@ We use Optuna \cite{akiba2019optuna} for this purpose, choosing it over Scikit-O
 \section{Related Work}\label{sec:relatedwork}
 % ============================================================
 
-This section positions the thesis against prior work on machine-learning-based data quality, the limitations of existing rule-based tools, AutoML for anomaly detection, and the comparison between classical and neural detectors on tabular data.
+Prior work relevant to this thesis spans four areas: machine-learning approaches to data quality in ETL pipelines, the limitations of existing rule-based quality tools, AutoML for anomaly detection, and the comparison between classical and neural detectors for tabular data.
 
 \subsection{ML-Based Quality in ETL Pipelines}
 
@@ -373,28 +372,31 @@ Speed is also a practical concern. Training a neural network for tens to hundred
 \section{System Design}\label{sec:systemdesign}
 % ============================================================
 
-This work follows a build-and-evaluate approach: this section describes the system we built, and Section~\ref{sec:expsetup} describes how we evaluated it. We designed and deployed a complete ETL pipeline on AWS, using Apache Airflow for orchestration, dbt for SQL transformations, and DuckDB as a data warehouse. We developed a custom Python library, the Adaptive Profiler, and integrated it at the ingestion stage. It adds two quality check layers on each incoming batch: a rule-based layer for data contract checks, and an ML-based layer that trains an anomaly detection model per column using PyOD and Optuna. Both layers are configured through a single YAML file.
+This work follows a build-and-evaluate approach: this section describes the system that was built, and Section~\ref{sec:expsetup} describes how it was evaluated. A complete ETL pipeline was designed and deployed on AWS, using Apache Airflow for orchestration, dbt for SQL transformations, and DuckDB as a data warehouse. A custom Python library called the Adaptive Profiler was developed and integrated at the ingestion stage. It adds two quality check layers on each incoming batch: a rule-based layer for data contract checks, and an ML-based layer that trains an anomaly detection model per column using PyOD and Optuna. Both layers are configured through a single YAML file.
 
 \subsection{System Architecture}
 
 The system adds ML-based anomaly detection to an ETL pipeline using open-source tools.\footnote{Full source code, system design, and experiment scripts are available at \url{https://github.com/kooroshkz/adaptive-data-profiling-etl} \cite{repoetl2026}.}
 
 \begin{itemize}
+  \item AWS EC2 (a Linux server) as the compute host, running the pipeline inside Docker containers
   \item Apache Airflow for pipeline orchestration and scheduling
+  \item External weather APIs as the data source for the Extract stage
   \item dbt for data transformation and schema metadata
-  \item AWS S3 and EC2 for hosting data and the Airflow scheduler
-  \item DuckDB/MotherDuck as a SQL warehouse
+  \item Amazon S3 as the data lake where processed data is loaded
+  \item DuckDB/MotherDuck as a SQL warehouse for local analytics and cloud sharing
+  \item A Next.js dashboard for visualizing the results
+  \item GitHub Actions for continuous integration and deployment
   \item A custom Python library for ML-based anomaly detection using PyOD and Optuna \cite{repoadaptiveprofiler2026}
-  \item MLflow for model tracking, versioning, and metric logging
 \end{itemize}
 
-Figure~\ref{fig:workflow} shows the overall workflow and tool integration.
+Figure~\ref{fig:workflow} shows how these tools fit together. The pipeline runs on an Amazon EC2 Linux server, where Apache Airflow executes inside Docker containers. Airflow orchestrates the three ETL stages: it extracts data from external weather APIs (Extract), dbt transforms it (Transform), and the results are loaded into an Amazon S3 data lake (Load). From S3, DuckDB/MotherDuck provides SQL analytics and a Next.js dashboard provides visualization, while EC2 reads from and writes to S3. GitHub Actions automates continuous integration and deployment. In the figure, solid arrows show data and control flow, dashed arrows show automation and CI flow, and dashed boxes mark external sources. The AutoML anomaly detection that this thesis adds is integrated into the Airflow workflow and is shown in detail in the pipeline DAG of Figure~\ref{fig:intended_etl}.
 
-\begin{figure}[!htbp]
+\begin{figure}[t]
   \begin{center}
-  \includegraphics[width=0.95\textwidth]{images/workflow_diagram}
+  \includegraphics[width=0.95\textwidth]{images/workflow_diagram_new}
   \end{center}
-  \caption{System architecture overview. Data flows from Airflow through the AutoML detection step and is tracked in MLflow. Anomaly flags are stored in DuckDB/MotherDuck.}
+  \caption{System architecture and tool integration. Apache Airflow runs in Docker on an Amazon EC2 server (on AWS) and orchestrates the Extract (external weather APIs), Transform (dbt), and Load (Amazon S3 data lake) stages. From S3, DuckDB/MotherDuck serves SQL analytics and a Next.js dashboard provides visualization; GitHub Actions handles CI/CD. Solid arrows are data and control flow, dashed arrows are automation and CI flow, and dashed boxes mark external sources.}
   \label{fig:workflow}
 \end{figure}
 
@@ -587,6 +589,10 @@ Rule-based checks are fast and transparent, but limited. A rule like \texttt{ran
 
 The second layer is \textbf{ML-based}. For any column marked \texttt{automl: true} in the configuration, a statistical model is trained on recent historical data. The model learns what normal looks like for that column and flags values that fall outside its learned distribution, even when they pass all rule-based checks. This is what the library calls adaptive profiling.
 
+In \textbf{training mode}, Optuna searches for the best model and hyperparameters for each configured column. Trained models are saved to S3 under a path that includes the column name and city, so Amsterdam gets its own model trained on Amsterdam's weather patterns.
+
+In \textbf{scoring mode}, the profiler loads the saved model for each column and scores new incoming rows. The output is a long-format DataFrame with one row per (timestamp, column) containing the anomaly score, a binary flag, and any rule-based violations. Failures are reported in the output rather than raised as exceptions so the pipeline keeps running.
+
 Both layers are declared in a single YAML configuration file. An example is shown below.
 
 \newpage
@@ -631,15 +637,11 @@ columns:
 
 \end{lstlisting}
 
-In \textbf{training mode}, Optuna searches for the best model and hyperparameters for each configured column. Trained models are saved to S3 under a path that includes the column name and city, so Amsterdam gets its own model trained on Amsterdam's weather patterns.
-
-In \textbf{scoring mode}, the profiler loads the saved model for each column and scores new incoming rows. The output is a long-format DataFrame with one row per (timestamp, column) containing the anomaly score, a binary flag, and any rule-based violations. Failures are reported in the output rather than raised as exceptions so the pipeline keeps running.
-
 % ============================================================
 \section{Experimental Setup}\label{sec:expsetup}
 % ============================================================
 
-To evaluate the system, we ingested hourly weather data from five cities from the Open-Meteo API and injected controlled anomalies as ground-truth labels. We ran three experiments, one per research sub-question: detection effectiveness, computational overhead and scaling, and a comparison between classical AutoML and neural detector search.
+To evaluate the system, hourly weather data from five cities was ingested from the Open-Meteo API with controlled anomalies injected as ground-truth labels. Three experiments were run, one per research sub-question: detection effectiveness, computational overhead and scaling, and a comparison between classical AutoML and neural detector search.
 
 \subsection{Dataset}
 
@@ -710,7 +712,7 @@ The injected anomalies in the experiments below are moderate shifts, not extreme
 
 \subsection{Experiment 1: Detection Effectiveness}
 
-This experiment measures how accurately ML-based detection identifies the injected anomalies, reported first in detail for Amsterdam, then across all five cities, and finally on the electricity dataset to test generalization.
+This experiment measures how accurately ML-based detection finds injected anomalies compared to rule-based checks. We first describe the injected anomalies, then report detection results for Amsterdam, the algorithm Optuna selected across all cities, the multi-city comparison, the effect of shift magnitude, and finally a generalization test on electricity demand data.
 
 \subsubsection{Injected Anomalies}
 
@@ -1102,7 +1104,7 @@ Figure~\ref{fig:elec_shift} compares detection rate by shift band for INDO. At t
   enlarge y limits=0.18,
   nodes near coords,
   nodes near coords style={font=\small, /pgf/number format/.cd, fixed, precision=0},
-  legend style={at={(0.98,0.08)}, anchor=south east, font=\small,
+  legend style={at={(0.5,1.03)}, anchor=south, font=\small, legend columns=2,
                 draw=codeborder, fill=codebg},
   legend cell align=left,
 ]
@@ -1148,7 +1150,7 @@ $k$      & Trials            & Models and parameter sets Optuna tries & $\ge 1$ 
 \midrule
 $\alpha$ & Baseline constant & Per-fit baseline cost; depends on hardware and data & $> 0$ \\
 $\beta$  & Row exponent      & How training time grows with rows & $0.3$--$1.2$ \\
-$\delta$ & Column exponent   & How training time grows with columns & $\approx 1$ \\
+$\delta$ & Column exponent   & How training time grows with columns & $0$--$1$ \\
 $\gamma$ & Trial exponent    & How training time grows with trials & $\approx 1$ \\
 \bottomrule
 \end{tabularx}
@@ -1157,7 +1159,7 @@ $\gamma$ & Trial exponent    & How training time grows with trials & $\approx 1$
 \label{tab:scaling_params}
 \end{table}
 
-The exponents $\beta$, $\delta$, $\gamma$ primarily reflect properties of the algorithms and data structure rather than hardware, while $\alpha$ captures the baseline per-fit cost of the benchmark machine and data. These parameters were fitted on one specific data batch, with Optuna drawing across the same five detectors it uses in production. Because the realized time depends on which detectors the search spends most of its trials on, and on the size and structure of the incoming data, a substantially different dataset, model mix, or machine can shift the constants. The fitted values should therefore be read as calibrated to the benchmark setup rather than as universal constants. In practice, the projection tool is re-run on a sample of the target data so that $\alpha$ and the exponents reflect that specific workload. All four can only be obtained by running the tool across different configurations and measuring real training times.
+The exponents $\beta$, $\delta$, $\gamma$ primarily reflect properties of the algorithms and data structure rather than hardware, while $\alpha$ captures the baseline per-fit cost of the benchmark machine and data. The column exponent $\delta$ depends on how the columns are profiled and therefore spans $0$ to $1$. When several columns are fed to a single shared model, adding a column increases only the feature dimensionality of one fit, which barely changes its cost, so $\delta \to 0$. The benchmark, which fits one model over $m$ feature columns, measures $\delta \approx 0$ for this reason. When each column instead trains its own independent model, as in this pipeline's per-column design, the total cost is the sum over columns and grows roughly linearly, so $\delta \to 1$. These parameters were fitted on one specific data batch, with Optuna drawing across the same five detectors it uses in production. Because the realized time depends on which detectors the search spends most of its trials on, and on the size and structure of the incoming data, a substantially different dataset, model mix, or machine can shift the constants. The fitted values should therefore be read as calibrated to the benchmark setup rather than as universal constants. In practice, the projection tool is re-run on a sample of the target data so that $\alpha$ and the exponents reflect that specific workload. All four can only be obtained by running the tool across different configurations and measuring real training times. Fitted over the roughly 90 benchmark configurations, the overall formula matches about 86\% of the variation in the measured training times, so the power-law form captures most of what drives training cost.
 
 \subsubsection{Scaling Behavior Depends on Algorithm Choice}
 
@@ -1250,7 +1252,7 @@ LOF      & 1.175 & $2.26\times$ more time & $14.96\times$ more time \\
 
 \subsubsection{Per-Algorithm Scaling}
 
-Figure~\ref{fig:beta_chart} summarizes the fitted $\beta$ per algorithm. IForest is the most scalable. LOF is the only super-linear algorithm.
+Figure~\ref{fig:beta_chart} summarizes the fitted $\beta$ per algorithm. IForest is the most scalable. LOF is the only super-linear algorithm. Each $\beta$ is fitted separately for each detector, and every fit is accurate: the fitted curve matches between 92\% (IForest) and over 99\% (ECOD, COPOD, and LOF) of the variation in the measured training times, so it tracks each detector's real timings closely.
 
 \begin{figure}[H]
 \begin{center}
@@ -1298,9 +1300,68 @@ Figure~\ref{fig:beta_chart} summarizes the fitted $\beta$ per algorithm. IForest
 % "super-linear" annotation
 \end{tikzpicture}
 \end{center}
-\caption{Fitted row scaling exponent $\beta$ per algorithm from ~90 benchmark observations.}
+\caption{Fitted row scaling exponent $\beta$ per algorithm from ~90 benchmark observations. Each $\beta$ is fitted separately per detector, and the fitted curves match the measured training times closely (from 92\% of the variation for IForest to over 99\% for ECOD, COPOD, and LOF).}
 \label{fig:beta_chart}
 \end{figure}
+
+\subsubsection{How Close Is the Projected Time to Reality?}
+\label{sec:projection_accuracy}
+
+The scaling formula is only useful if the time it \emph{estimates} is close to the time training actually \emph{takes}. Because the projection tool is meant to be calibrated on a small sample and then extrapolated to the full dataset, its accuracy is best judged as a function of how much data it is given. We measured this on surface pressure, the most predictable column in the detection experiments (Section~\ref{sec:experiments}): the real training time was recorded across a grid of row counts (median of seven warm repeats, using the ECOD detector Optuna selected for this column and $k=25$ trials per column). For each data fraction the law was fit on only the rows up to that fraction and extrapolated to the full $n_{\text{full}}=20{,}352$ rows, then compared against the measured full-scale time. The time reported throughout is the cost of one full per-column search, that is, all $25$ trials. At $25\%$ this is a four-fold extrapolation; at $100\%$ it reduces to interpolation. A small fixed per-fit offset is included in the fit, so the exponent reflects the true data scaling rather than being dragged down by the constant setup cost that dominates the smallest samples.
+
+\begin{table}[H]
+\centering
+\begin{minipage}[c]{0.44\textwidth}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+Data & Rows & $\beta$ & Pred. & Actual & Error \\
+\midrule
+25\%   & 5{,}088  & 1.09 & 0.073\,s & 0.067\,s & 8.9\% \\
+50\%   & 10{,}176 & 1.05 & 0.069\,s & 0.067\,s & 3.0\% \\
+75\%   & 15{,}264 & 1.02 & 0.067\,s & 0.067\,s & 0.5\% \\
+100\%  & 20{,}352 & 1.03 & 0.067\,s & 0.067\,s & 0.5\% \\
+\bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.54\textwidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=7.6cm, height=5.6cm,
+  xlabel={Data given to the tool (\%)},
+  ylabel={Search time, $k=25$ (s)},
+  xmin=15, xmax=110, ymin=0.060, ymax=0.080,
+  xtick={25,50,75,100},
+  ytick={0.060,0.065,0.070,0.075,0.080},
+  yticklabel={\pgfmathprintnumber[fixed,precision=3]{\tick}},
+  tick align=outside,
+  axis line style={draw=gray!60},
+  ymajorgrids=true, major grid style={draw=gray!20},
+  legend style={at={(0.97,0.97)}, anchor=north east, font=\scriptsize,
+                draw=codeborder, fill=codebg},
+  legend cell align=left,
+]
+% measured full-scale time (constant reference)
+\addplot[recall!70!black, dashed, line width=1pt] coordinates {(15,0.067) (110,0.067)};
+\addlegendentry{Actual (full scale)}
+% projected time, with error labels, converging onto the actual line
+\addplot[leidenblue, line width=1.1pt, mark=*, mark size=2.2pt,
+  nodes near coords, point meta=explicit symbolic,
+  every node near coord/.append style={font=\tiny, anchor=south,
+    yshift=2pt, color=leidenblue!80!black}]
+  coordinates {(25,0.073)[8.9\%] (50,0.069)[3.0\%] (75,0.067)[0.5\%] (100,0.067)[0.5\%]};
+\addlegendentry{Projected}
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\caption{Projected versus measured full-scale training time for surface pressure (ECOD, $n_{\text{full}}=20{,}352$, $k=25$), as the projection tool is calibrated on an increasing fraction of the data. Times are the cost of one full per-column search (all 25 trials). \textbf{Left:} the rows seen, fitted row exponent $\beta$, projected and actual search time, and the resulting error. \textbf{Right:} the projected time (blue, labelled with its error) converging onto the measured full-scale time (green dashed). From three quarters of the data the two are visually indistinguishable.}
+\label{tab:projection_pressure}
+\end{table}
+
+The estimate is already within $8.9\%$ of reality from only a quarter of the data and tightens quickly: $3.0\%$ at half and $0.5\%$ once the tool has seen three quarters of the scale, where the projected and measured times coincide. The fitted exponent stays close to $\beta\approx 1$, consistent with ECOD's near-linear cost, and the error shrinks because the extrapolation reach falls from fourfold at $25\%$ to none at $100\%$. In practice a data engineer can calibrate the tool on roughly half of the target data and trust the projected training time to within a few percent before committing to a full deployment, while even a $25\%$ sample yields a reliable order-of-magnitude estimate. The columns that project most accurately are those with stable, near-linear scaling such as surface pressure, the same columns that proved easiest to profile in the detection experiments.
 
 \subsection{Experiment 3: AutoML vs.\ Neural Detector Search}\label{sec:autonn_comparison}
 
@@ -1449,7 +1510,7 @@ Tokyo     & Temp.\ 2m    & COPOD& 0.038 &  2.4 & AE  & 0.027 & 35.2 \\
 \section{Discussion}\label{sec:discussion}
 % ============================================================
 
-This section interprets the results of the three experiments: what determines detection effectiveness, why classical detectors outperform neural search, how the decision threshold trades off false positives against recall, and what the findings mean for training on large datasets.
+The results invite a closer look at what drives them: what makes some columns easy to profile and others not, why classical AutoML outperforms neural detector search, how threshold calibration trades off false positives against recall, what training on large datasets requires in practice, and where the evaluation falls short.
 
 \subsection{Detection Effectiveness}
 
@@ -1538,7 +1599,7 @@ The approach trains one model per column independently. Anomalies that only appe
 \section{Conclusions and Further Work}\label{sec:conclusions}
 % ============================================================
 
-This section summarises the answers to the three research sub-questions and outlines directions for further work.
+Taken together, the experiments answer the three sub-questions on the effectiveness, practicality, and model choice of learning-based anomaly detection at ingestion. The conclusions are summarized below, followed by directions for further work.
 
 \subsection{Conclusion}
 
