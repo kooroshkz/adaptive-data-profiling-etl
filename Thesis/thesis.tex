@@ -1,5 +1,6 @@
 \documentclass[12pt]{article}
 
+\PassOptionsToPackage{table}{xcolor}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage[left=2cm,right=2cm,top=2cm,bottom=3cm]{geometry}
@@ -1119,6 +1120,103 @@ Figure~\ref{fig:elec_shift} compares detection rate by shift band for INDO. At t
 \caption{Detection rate by injected shift size for INDO (tuned AutoML vs.\ untuned IForest baseline). The tuned model catches all anomalies at 80\% shift or above, while the untuned baseline reaches 90--94\%. The tuned run provides the largest benefit at the 50--60\% shift band, lifting detection from 67\% to 95\%.}
 \label{fig:elec_shift}
 \end{figure}
+
+\subsubsection{Sensitivity to Anomaly Rate and Shift Magnitude}
+\label{sec:elec_sensitivity}
+
+The electricity results so far fix a single anomaly rate ($\approx$2.5\%) and use large 50--100\% shifts. To map \emph{where} AutoML detection succeeds or fails on this domain, we sweep the two factors that govern difficulty: the \emph{anomaly rate} (the fraction of records made anomalous) and the \emph{shift magnitude} (how far each injected value is moved, in either direction). For every combination we inject fresh anomalies into the raw demand series and run the identical AutoML search used throughout this work (Optuna over the same PyOD detectors, F2 objective, seasonality-adjusted contextual features), changing nothing about the detector itself. We report the \emph{capture rate}: the share of the injected anomalies the model flags, that is, recall against the known ground truth, the same quantity Figure~\ref{fig:elec_shift} reports for one setting. The grid covers anomaly rates of $\{1, 2, 5, 10, 20\}\%$ and shift magnitudes of $\{10, 20, 30, 40, 50\}\%$ with random sign; each cell is the mean of three injection seeds (the across-seed variation is small), and results are reported separately for the two demand columns, INDO and ITSDO. Table~\ref{tab:elec_sensitivity} gives the capture rates and Figure~\ref{fig:elec_sensitivity_surf} shows the same values as a surface.
+
+\begin{table}[H]
+\centering\footnotesize
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{minipage}[t]{0.49\textwidth}\centering
+\textbf{INDO}\par\vspace{3pt}
+\begin{tabular}{@{}l ccccc@{}}
+\toprule
+& \multicolumn{5}{c}{Shift magnitude}\\
+\cmidrule(l){2-6}
+Rate & 10\% & 20\% & 30\% & 40\% & 50\% \\
+\midrule
+1\% & \cellcolor[RGB]{254,251,185}49 & \cellcolor[RGB]{201,232,128}63 & \cellcolor[RGB]{117,195,100}78 & \cellcolor[RGB]{69,173,90}\textcolor{white}{84} & \cellcolor[RGB]{54,165,87}\textcolor{white}{86} \\
+2\% & \cellcolor[RGB]{227,243,153}57 & \cellcolor[RGB]{119,196,100}77 & \cellcolor[RGB]{87,181,95}82 & \cellcolor[RGB]{60,168,88}\textcolor{white}{85} & \cellcolor[RGB]{24,149,78}\textcolor{white}{90} \\
+5\% & \cellcolor[RGB]{187,226,119}66 & \cellcolor[RGB]{75,175,92}\textcolor{white}{83} & \cellcolor[RGB]{21,143,75}\textcolor{white}{92} & \cellcolor[RGB]{23,147,77}\textcolor{white}{91} & \cellcolor[RGB]{16,134,70}\textcolor{white}{94} \\
+10\% & \cellcolor[RGB]{218,239,141}60 & \cellcolor[RGB]{72,174,91}\textcolor{white}{84} & \cellcolor[RGB]{24,149,78}\textcolor{white}{91} & \cellcolor[RGB]{39,158,83}\textcolor{white}{88} & \cellcolor[RGB]{18,137,72}\textcolor{white}{93} \\
+20\% & \cellcolor[RGB]{254,250,183}49 & \cellcolor[RGB]{191,227,122}65 & \cellcolor[RGB]{139,205,103}74 & \cellcolor[RGB]{114,194,100}78 & \cellcolor[RGB]{93,184,96}81 \\
+\bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}\centering
+\textbf{ITSDO}\par\vspace{3pt}
+\begin{tabular}{@{}l ccccc@{}}
+\toprule
+& \multicolumn{5}{c}{Shift magnitude}\\
+\cmidrule(l){2-6}
+Rate & 10\% & 20\% & 30\% & 40\% & 50\% \\
+\midrule
+1\% & \cellcolor[RGB]{254,250,183}48 & \cellcolor[RGB]{144,207,103}73 & \cellcolor[RGB]{137,204,102}74 & \cellcolor[RGB]{45,161,84}\textcolor{white}{87} & \cellcolor[RGB]{17,136,71}\textcolor{white}{93} \\
+2\% & \cellcolor[RGB]{242,249,173}53 & \cellcolor[RGB]{93,184,96}81 & \cellcolor[RGB]{57,167,87}\textcolor{white}{86} & \cellcolor[RGB]{39,158,83}\textcolor{white}{88} & \cellcolor[RGB]{22,145,76}\textcolor{white}{91} \\
+5\% & \cellcolor[RGB]{157,213,105}71 & \cellcolor[RGB]{60,168,88}\textcolor{white}{85} & \cellcolor[RGB]{25,151,79}\textcolor{white}{90} & \cellcolor[RGB]{13,128,67}\textcolor{white}{95} & \cellcolor[RGB]{27,152,80}\textcolor{white}{90} \\
+10\% & \cellcolor[RGB]{205,233,131}62 & \cellcolor[RGB]{63,170,89}\textcolor{white}{85} & \cellcolor[RGB]{22,145,76}\textcolor{white}{91} & \cellcolor[RGB]{17,136,71}\textcolor{white}{93} & \cellcolor[RGB]{25,151,79}\textcolor{white}{90} \\
+20\% & \cellcolor[RGB]{254,248,179}48 & \cellcolor[RGB]{191,227,122}65 & \cellcolor[RGB]{139,205,103}74 & \cellcolor[RGB]{112,193,100}78 & \cellcolor[RGB]{99,187,98}80 \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\caption{Capture rate (\%) of injected anomalies for GB electricity demand, by anomaly rate (rows) and shift magnitude (columns), for the two demand columns. Each value is the recall of the injected ground truth, averaged over three injection seeds. Cells are shaded from red (low capture) to green (high). Detection strengthens with shift magnitude and is strongest at intermediate anomaly rates (5--10\%).}
+\label{tab:elec_sensitivity}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=1.2cm},
+  width=7.6cm, height=6.6cm,
+  view={-60}{22},
+  colormap={rdylgn}{rgb255(0cm)=(215,48,39); rgb255(1cm)=(252,141,89); rgb255(2cm)=(254,224,139); rgb255(3cm)=(145,207,96); rgb255(4cm)=(26,152,80)},
+  point meta min=0, point meta max=1,
+  xlabel={Shift}, ylabel={Rate}, zlabel={Capture rate},
+  xtick={1,2,3,4,5}, xticklabels={10\%,20\%,30\%,40\%,50\%},
+  ytick={1,2,3,4,5}, yticklabels={1\%,2\%,5\%,10\%,20\%},
+  zmin=0, zmax=1, ztick={0,0.25,0.5,0.75,1.0},
+  xticklabel style={font=\scriptsize}, yticklabel style={font=\scriptsize},
+  zticklabel style={font=\scriptsize},
+  xlabel style={font=\small}, ylabel style={font=\small}, zlabel style={font=\small},
+  title style={font=\small\bfseries},
+]
+\nextgroupplot[title={INDO}]
+\addplot3[surf, mesh/cols=5, faceted color=black!35] coordinates {
+(1,1,0.489) (2,1,0.633) (3,1,0.776) (4,1,0.841) (5,1,0.860)
+
+(1,2,0.571) (2,2,0.772) (3,2,0.817) (4,2,0.853) (5,2,0.904)
+
+(1,3,0.659) (2,3,0.833) (3,3,0.916) (4,3,0.907) (5,3,0.937)
+
+(1,4,0.598) (2,4,0.837) (3,4,0.906) (4,4,0.880) (5,4,0.928)
+
+(1,5,0.486) (2,5,0.652) (3,5,0.739) (4,5,0.780) (5,5,0.810)
+};
+\nextgroupplot[title={ITSDO}]
+\addplot3[surf, mesh/cols=5, faceted color=black!35] coordinates {
+(1,1,0.485) (2,1,0.731) (3,1,0.742) (4,1,0.871) (5,1,0.932)
+
+(1,2,0.535) (2,2,0.810) (3,2,0.857) (4,2,0.881) (5,2,0.911)
+
+(1,3,0.713) (2,3,0.853) (3,3,0.901) (4,3,0.946) (5,3,0.897)
+
+(1,4,0.622) (2,4,0.849) (3,4,0.911) (4,4,0.930) (5,4,0.899)
+
+(1,5,0.479) (2,5,0.651) (3,5,0.740) (4,5,0.783) (5,5,0.804)
+};
+\end{groupplot}
+\end{tikzpicture}
+\caption{Capture-rate surface over anomaly rate and shift magnitude for the two demand columns (same values as Table~\ref{tab:elec_sensitivity}; height and colour both encode capture rate). The surface rises steeply along the shift axis and ridges at the intermediate 5--10\% anomaly rates, falling off at the 1\% and 20\% extremes.}
+\label{fig:elec_sensitivity_surf}
+\end{figure}
+
+Two effects stand out, both consistent with the rest of the thesis. First, \textbf{shift magnitude is the dominant driver of detection}. Capture climbs steeply from roughly one half at a 10\% shift to 80--95\% by a 40--50\% shift, the same monotone trend already seen for weather (Figure~\ref{fig:shift}) and for the single-rate electricity run (Figure~\ref{fig:elec_shift}). A 10\% shift on demand is a genuinely hard contextual anomaly: it often stays inside the normal daily range and is unusual only relative to the time of day, so a large fraction slips past. From a 30\% shift onward the model catches the clear majority (74--92\%).
+
+Second, \textbf{the anomaly rate has a sweet spot around 5--10\%}. Detection is weaker at both extremes. At 1\% the unsupervised search has very few positive examples to calibrate its decision threshold against, so it stays conservative; at 20\% the injected anomalies contaminate the very distribution the model treats as normal, pulling the learned ``normal'' band toward them so that it begins to accept them. This is a direct empirical instance of the unsupervised limitation noted in Section~\ref{sec:discussion}, that anomalies already present in the training data are learned as normal. INDO and ITSDO produce almost identical surfaces, as expected since ITSDO is INDO plus station load and interconnector exports, so the two series move together. Across the grid Optuna again favoured the tail- and density-based detectors (ECOD and HBOS) that suit demand's tight, seasonal distribution, the same families it selected in the main electricity run (Table~\ref{tab:elec_before_after}).
 
 \subsection{Experiment 2: Practical Overhead and Scaling}
 
