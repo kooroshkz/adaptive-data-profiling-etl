@@ -1,0 +1,13 @@
+{
+  "model_name": "ECOD",
+  "params": {
+    "contamination": 0.004716286009859227
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.3874538745387454,
+  "label_available": true,
+  "partition_key": "london",
+  "column": "surface_pressure",
+  "saved_at": "2026-05-28T09:21:26.625733+00:00"
+}

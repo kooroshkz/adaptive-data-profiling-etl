@@ -1,0 +1,15 @@
+{
+  "model_name": "LOF",
+  "params": {
+    "contamination": 0.0016584178579368471,
+    "n_neighbors": 75,
+    "leaf_size": 39
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.08196721311475409,
+  "label_available": true,
+  "partition_key": "amsterdam",
+  "column": "precipitation",
+  "saved_at": "2026-05-28T09:20:50.187582+00:00"
+}

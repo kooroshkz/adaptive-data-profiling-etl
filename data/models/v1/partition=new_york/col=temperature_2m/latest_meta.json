@@ -1,0 +1,13 @@
+{
+  "model_name": "ECOD",
+  "params": {
+    "contamination": 0.19632584745372827
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.02772002772002772,
+  "label_available": true,
+  "partition_key": "new_york",
+  "column": "temperature_2m",
+  "saved_at": "2026-05-28T09:21:40.370575+00:00"
+}

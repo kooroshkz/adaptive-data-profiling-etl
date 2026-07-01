@@ -1,0 +1,15 @@
+{
+  "model_name": "LOF",
+  "params": {
+    "contamination": 0.006674619025368454,
+    "n_neighbors": 5,
+    "leaf_size": 17
+  },
+  "n_train_rows": 20496,
+  "n_trials": 30,
+  "best_objective_value": 0.3191489361702128,
+  "label_available": true,
+  "partition_key": "tokyo",
+  "column": "apparent_temperature",
+  "saved_at": "2026-05-28T09:22:51.426045+00:00"
+}

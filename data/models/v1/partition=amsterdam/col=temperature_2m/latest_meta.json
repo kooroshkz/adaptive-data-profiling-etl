@@ -1,0 +1,15 @@
+{
+  "model_name": "LOF",
+  "params": {
+    "contamination": 0.016186772576525475,
+    "n_neighbors": 21,
+    "leaf_size": 31
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.2950310559006211,
+  "label_available": true,
+  "partition_key": "amsterdam",
+  "column": "temperature_2m",
+  "saved_at": "2026-05-28T09:20:34.447491+00:00"
+}

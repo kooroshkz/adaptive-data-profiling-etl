@@ -1,0 +1,15 @@
+{
+  "model_name": "IForest",
+  "params": {
+    "contamination": 0.023976819265900853,
+    "n_estimators": 84,
+    "max_samples": 0.853462249579648
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.0975609756097561,
+  "label_available": true,
+  "partition_key": "london",
+  "column": "soil_moisture_7_to_28cm",
+  "saved_at": "2026-05-28T09:21:36.084895+00:00"
+}

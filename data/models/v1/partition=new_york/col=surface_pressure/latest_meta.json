@@ -1,0 +1,16 @@
+{
+  "model_name": "HBOS",
+  "params": {
+    "contamination": 0.012278360049275504,
+    "n_bins": 9,
+    "alpha": 0.06882200830208368,
+    "tol": 0.06823524276660525
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.4198473282442748,
+  "label_available": true,
+  "partition_key": "new_york",
+  "column": "surface_pressure",
+  "saved_at": "2026-05-28T09:21:59.505280+00:00"
+}

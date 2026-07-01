@@ -1,0 +1,13 @@
+{
+  "model_name": "ECOD",
+  "params": {
+    "contamination": 0.00488761223712977
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.4612546125461255,
+  "label_available": true,
+  "partition_key": "amsterdam",
+  "column": "surface_pressure",
+  "saved_at": "2026-05-28T09:20:53.112222+00:00"
+}

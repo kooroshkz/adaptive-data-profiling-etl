@@ -1,0 +1,15 @@
+{
+  "model_name": "LOF",
+  "params": {
+    "contamination": 0.004214989522565242,
+    "n_neighbors": 98,
+    "leaf_size": 80
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.35984848484848486,
+  "label_available": true,
+  "partition_key": "paris",
+  "column": "surface_pressure",
+  "saved_at": "2026-05-28T09:22:29.271195+00:00"
+}

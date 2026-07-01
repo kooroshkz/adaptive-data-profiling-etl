@@ -1,0 +1,15 @@
+{
+  "model_name": "LOF",
+  "params": {
+    "contamination": 0.012278360049275504,
+    "n_neighbors": 5,
+    "leaf_size": 77
+  },
+  "n_train_rows": 20472,
+  "n_trials": 30,
+  "best_objective_value": 0.3448275862068966,
+  "label_available": true,
+  "partition_key": "new_york",
+  "column": "soil_moisture_7_to_28cm",
+  "saved_at": "2026-05-28T09:22:05.800306+00:00"
+}
