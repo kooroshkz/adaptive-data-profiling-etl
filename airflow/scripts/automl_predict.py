@@ -108,6 +108,28 @@ def _upload_predictions_to_s3(df: pd.DataFrame, city: str, run_date: str) -> str
     return f"s3://{bucket}/{key}"
 
 
+def _models_are_lfs_pointers(city: str, feature_cols: list[str]) -> bool:
+    """True if the local model files are unresolved Git LFS pointer stubs.
+
+    Lets a clone made without git-lfs run the pipeline anyway: scoring is skipped
+    with a clear message instead of crashing on a pointer file.
+    """
+    base = Path(MODELS_DIR)
+    saw_existing = False
+    for col in feature_cols:
+        p = base / f"partition={city}" / f"col={col}" / "latest.pkl"
+        if not p.exists():
+            continue
+        saw_existing = True
+        try:
+            head = p.read_bytes()[:64]
+        except OSError:
+            continue
+        if not head.startswith(b"version https://git-lfs"):
+            return False  # at least one real model present
+    return saw_existing  # every model that exists was a pointer
+
+
 def main() -> None:
     _load_env()
 
@@ -143,7 +165,17 @@ def main() -> None:
 
     print(f"[INFO] Loaded {len(df)} rows")
 
-    predictions = profiler.score(partition_key=city, df=df)
+    try:
+        predictions = profiler.score(partition_key=city, df=df)
+    except Exception:
+        if _models_are_lfs_pointers(city, feature_cols):
+            print(
+                "[WARN] Model files are Git LFS pointers, not real models. "
+                "Run `git lfs pull`, or trigger the weather_automl_train DAG to "
+                "train models locally. Skipping scoring for this run."
+            )
+            return
+        raise
 
     if predictions.empty:
         print("[INFO] No columns scored.")

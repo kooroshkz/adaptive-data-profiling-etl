@@ -1,117 +1,39 @@
-# Technical Design
+# Technical design
 
-## Overview
+The pipeline runs in Docker via Airflow and processes weather data in batches.
+Storage defaults to local; S3 and MotherDuck are optional.
 
-This document describes the technical design of the ETL pipeline used in this project.
-The pipeline runs on AWS EC2 and processes weather data in batch mode.
-Its main goal is to ingest data reliably, apply structured transformations, and perform data quality checks.
-The design also allows ML-based anomaly detection to be added later without changing the core pipeline.
+## Flow
 
+1. Extract: Airflow tasks fetch hourly weather per city from the Open-Meteo API
+   and write Parquet to `airflow/data/raw/city=<city>/`. Synthetic anomalies are
+   injected at known positions for evaluation.
+2. Detect: for each city, `automl_predict.py` loads the per-column model from
+   `data/models/` and writes predictions to `data/anomaly_results/`.
+3. Transform: `transform_local.py` builds a DuckDB warehouse
+   (`data/warehouse.duckdb`) and daily marts (`data/mart/`) from the raw Parquet,
+   deduplicating by (time, city).
+4. Serve: the Next.js dashboard reads the local Parquet and shows the data and
+   detected anomalies.
 
-<img src="files/tech_design_workflow_diagram.png" alt="ETL Pipeline Diagram" style="width:70%; max-width:800px;">
+## Components
 
-**System Components**: See [system_design_diagram.mermaid](files/system_design_diagram.mermaid) for infrastructure and technology stack.
+- Orchestration: Airflow (LocalExecutor) in Docker Compose, with Postgres for
+  metadata.
+- Quality checks: rule-based (data contract) plus per-column AutoML models,
+  configured in `profiling_schema.yml`. Models are trained by the
+  `weather_automl_train` DAG and stored under `data/models/v1/`.
+- Warehouse: DuckDB file, read by the dashboard. Optional MotherDuck/S3 when set
+  in `airflow/.env`.
 
----
+## DAGs
 
-## System Architecture
+- `weather_backfill` (manual): load history, then transform.
+- `weather_ingestion` (daily): incremental fetch, detect, transform.
+- `weather_automl_train` (manual): retrain per-column models.
 
-The system follows a layered ETL design.
-Data is first ingested from an external API, then stored in raw form.
-After ingestion, transformations and validations are applied before the data is used for analysis.
-Each part of the system has a single responsibility to keep the pipeline easy to understand and extend.
+## Storage
 
-Apache Airflow is used to control execution order and scheduling.
-Parquet files are stored in S3 with Hive partitioning, and MotherDuck is used for querying.
-dbt runs in GitHub Actions and manages transformations and data quality checks.
-
----
-
-## Data Ingestion
-
-The ingestion layer is responsible for extracting data from the Open-Meteo weather APIs.
-Both historical weather data and daily updates are ingested.
-
-The first execution performs a historical backfill and loads past data into the system.
-After this, the pipeline runs daily and only fetches new data since the last successful ingestion.
-This approach reflects how real ETL pipelines operate over time.
-
-Ingestion is implemented using Python scripts.
-The scripts perform minimal processing and add basic metadata such as ingestion time and batch identifiers.
-No validation or cleaning is done at this stage.
-
----
-
-## Orchestration
-
-Apache Airflow is used to orchestrate the pipeline.
-Airflow manages task execution order, scheduling, and retries.
-Each pipeline run consists of ingestion, S3 upload, raw table refresh, and triggering transformations.
-
-Historical ingestion is triggered manually, while daily ingestion is scheduled.
-Airflow waits for GitHub Actions to complete dbt transformations before marking the pipeline successful.
-If a task fails, Airflow retries execution and sends email notifications without affecting previously ingested data.
-
----
-
-## Storage Design
-
-MotherDuck is used as the analytical database.
-It allows SQL queries to be executed on cloud-hosted DuckDB with S3 integration.
-This makes the system scalable while maintaining DuckDB's performance.
-Airflow uses the local DuckDB engine to connect to MotherDuck and refresh tables from S3.
-
-Data is stored in Parquet format in S3 using Hive partitioning by city.
-Versioning is handled through timestamped snapshots and DuckDB's native capabilities.
-This makes it possible to reproduce experiments and compare different versions of the data.
-
-Data is stored in three logical layers.
-Raw tables store ingested data without modification and are refreshed by Airflow.
-Staging tables apply basic cleaning and type conversion.
-Mart tables contain aggregated and analysis-ready data and are refreshed by dbt in GitHub Actions.
-
----
-
-## Data Transformation
-
-Data transformations are handled using dbt running in GitHub Actions.
-dbt models are written in SQL and define how data moves from raw to staging and mart layers.
-
-Transformations include renaming columns, casting data types, and computing simple derived values.
-All transformation logic is version controlled and easy to review.
-Airflow triggers the dbt workflow and waits for completion to ensure pipeline integrity.
-
-Schema information and metadata are stored in dbt configuration files.
-These files also contain basic validation rules and optional metadata that can be used later for ML-based profiling.
-
----
-
-## Data Quality Validation
-
-Rule-based data quality checks are applied after transformations.
-These checks include missing value checks, uniqueness constraints, and value range checks.
-
-Validation results are recorded for analysis but do not stop the pipeline.
-This allows the system to collect information about data quality issues without blocking data availability.
-The rule-based checks serve as a baseline for later comparison with ML-based anomaly detection.
-
----
-
-## Incremental Processing
-
-The pipeline is designed to support incremental processing.
-Each ingestion run tracks the most recent timestamp that was successfully processed.
-Only new data is fetched during daily runs and stored with ingestion timestamps in Amsterdam timezone.
-
-MotherDuck table snapshots and timestamped data in S3 make it possible to compare data across different pipeline executions.
-This is useful for studying how data quality changes over time.
-
----
-
-## Preparation for ML Integration
-
-The ETL pipeline is independent of any ML components.
-ML-based anomaly detection can later be added as a separate step that reads processed data from DuckDB.
-
-Anomaly scores and flags can be stored alongside existing tables without modifying the original data.
-This design ensures that the pipeline remains stable even if ML experiments change.
+- Raw (scratch, regenerated each run): `airflow/data/raw/`.
+- Durable, git-tracked: `data/models/`, `data/anomaly_results/`.
+- Generated locally: `data/warehouse.duckdb`, `data/mart/`.

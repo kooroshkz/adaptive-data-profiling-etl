@@ -112,7 +112,7 @@ services:
       - -c
       - |
         mkdir -p /sources/logs /sources/dags /sources/plugins /sources/data/raw /sources/data/staging
-        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins,data}
+        chown -R "${AIRFLOW_UID:-50000}:0" /sources/{logs,dags,plugins,data}
         exec /entrypoint airflow version
     environment:
       <<: *airflow-common-env
