@@ -9,12 +9,7 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.trigger_rule import TriggerRule
-from dag_utils import (
-    send_email_notification,
-    build_failure_email,
-    trigger_github_workflow,
-    wait_for_github_workflow
-)
+from dag_utils import send_email_notification, build_failure_email
 
 default_args = {
     'owner': 'koorosh',
@@ -99,7 +94,7 @@ for idx, city in enumerate(CITIES):
 # Note: Upload to S3 happens automatically during ingestion (no separate task needed)
 
 # Anomaly detection tasks — run after each city's ingestion.
-# Loads trained models from S3 (s3://bucket/models/v1/city=<city>/col=<col>/latest.pkl)
+# Loads the committed local models (data/models/v1/partition=<city>/col=<col>/latest.pkl)
 # and scores today's data. Skips gracefully if no model has been trained yet.
 anomaly_detection_tasks = []
 for idx, city in enumerate(CITIES):
@@ -115,27 +110,15 @@ for idx, city in enumerate(CITIES):
     )
     anomaly_detection_tasks.append(detect_task)
 
-# Trigger GitHub Actions for dbt transformations and wait for completion
-def trigger_dbt():
-    """Trigger dbt transformation workflow in GitHub Actions and wait for completion"""
-    payload = {
-        'triggered_by': 'airflow',
-        'workflow': 'weather_ingestion'
-    }
-    success = trigger_github_workflow('trigger-dbt-transform', payload)
-    if not success:
-        raise Exception('Failed to trigger GitHub Actions workflow')
-    
-    # Wait for workflow to complete
-    wait_for_github_workflow(
-        workflow_name='dbt-transform.yml',
-        timeout_minutes=15,
-        poll_interval=15
-    )
-
-trigger_dbt_transform = PythonOperator(
-    task_id='trigger_dbt_transform',
-    python_callable=trigger_dbt,
+# Transform stage: build the local DuckDB warehouse + marts from raw parquet.
+# Runs entirely in-container (no GitHub Actions, no MotherDuck).
+run_transform = BashOperator(
+    task_id='run_transform',
+    bash_command='''
+    set -e
+    cd /opt/airflow/scripts
+    python transform_local.py
+    ''',
     dag=dag,
 )
 
@@ -146,11 +129,10 @@ log_completion = BashOperator(
     echo "=========================================="
     echo "Weather ingestion completed at $(date)"
     echo "=========================================="
-    echo "✓ Smart S3-aware ingestion (no duplicates, no gaps)"
+    echo "✓ Smart incremental ingestion (local, no duplicates, no gaps)"
     echo "✓ Sparse synthetic anomalies enabled (2 rows total across two cities per run)"
-    echo "✓ Raw data uploaded to S3 per-city (real-time)"
-    echo "✓ dbt transformations completed in GitHub Actions"
-    echo "✓ MotherDuck VIEWs query S3 directly (always fresh)"
+    echo "✓ Anomaly detection scored with committed local models"
+    echo "✓ Transform built the local DuckDB warehouse + marts"
     echo "=========================================="
     ''',
     trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,  # Run if either path succeeds
@@ -180,5 +162,5 @@ notify_failure = PythonOperator(
 install_deps >> select_anomaly_cities >> ingestion_tasks
 for ingest_task, detect_task in zip(ingestion_tasks, anomaly_detection_tasks):
     ingest_task >> detect_task
-anomaly_detection_tasks >> trigger_dbt_transform >> log_completion
-[log_completion, install_deps, select_anomaly_cities, trigger_dbt_transform] >> notify_failure
+anomaly_detection_tasks >> run_transform >> log_completion
+[log_completion, install_deps, select_anomaly_cities, run_transform] >> notify_failure

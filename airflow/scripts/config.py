@@ -62,5 +62,27 @@ MAX_RETRIES = 3
 RETRY_DELAY = 2
 
 import os
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # airflow/
+REPO_ROOT = os.path.dirname(PROJECT_ROOT)                                    # repo root
+
+# Fresh ingested raw data (scratch, safe to delete): airflow/data/raw locally,
+# /opt/airflow/data/raw in the container.
 RAW_DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw")
+
+# Durable, git-tracked artefacts (models, anomaly results, warehouse).
+# Defaults to the repo's data/ folder; the container sets PROFILER_DATA_ROOT
+# to the mounted repo data/ so the committed models are used with no AWS.
+PROJECT_DATA_ROOT = os.environ.get("PROFILER_DATA_ROOT") or os.path.join(REPO_ROOT, "data")
+MODELS_DIR = os.path.join(PROJECT_DATA_ROOT, "models", "v1")
+ANOMALY_RESULTS_DIR = os.path.join(PROJECT_DATA_ROOT, "anomaly_results")
+WAREHOUSE_PATH = os.path.join(PROJECT_DATA_ROOT, "warehouse.duckdb")
+MART_DIR = os.path.join(PROJECT_DATA_ROOT, "mart")
+
+
+def s3_enabled() -> bool:
+    """True only when S3 is explicitly configured (bucket + credentials)."""
+    return bool(
+        os.getenv("S3_BUCKET")
+        and os.getenv("AWS_ACCESS_KEY_ID")
+        and os.getenv("AWS_SECRET_ACCESS_KEY")
+    )

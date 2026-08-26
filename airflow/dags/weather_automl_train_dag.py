@@ -61,7 +61,7 @@ log_completion = BashOperator(
     echo "=================================================="
     echo "AutoML training completed at $(date)"
     echo "=================================================="
-    echo "Models saved to S3: s3://$S3_BUCKET/models/v1/"
+    echo "Models saved locally to data/models/v1/ (git-tracked)"
     echo "Each city/column: latest.pkl + latest_meta.json"
     echo "=================================================="
     """,

@@ -23,6 +23,9 @@ import pandas as pd
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 from adaptive_profiler import Profiler
+from adaptive_profiler.storage import LocalStore
+
+from config import RAW_DATA_PATH, MODELS_DIR
 
 _SCHEMA = _REPO_ROOT / "profiling_schema.yml"
 _CITIES = ["amsterdam", "london", "new_york", "paris", "tokyo"]
@@ -44,7 +47,7 @@ def _load_env() -> None:
 
 def load_city_data(city: str, feature_cols: list[str]) -> pd.DataFrame:
     """Load deduplicated historical parquet for *city* from the local mirror."""
-    city_dir = _REPO_ROOT / "airflow" / "data" / "raw" / f"city={city}"
+    city_dir = Path(RAW_DATA_PATH) / f"city={city}"
     candidates = sorted(city_dir.glob("hourly_*.parquet"))
     if not candidates:
         return pd.DataFrame()
@@ -77,6 +80,9 @@ def main() -> None:
     args = parser.parse_args()
 
     profiler = Profiler.from_yaml(args.schema)
+    # Save models to the local git-tracked store unless the schema chooses S3.
+    if profiler._config.model_store.backend == "local":
+        profiler._store = LocalStore(base_dir=MODELS_DIR)
     feature_cols = profiler.automl_columns
 
     print(f"[INFO] Schema    : {args.schema}")

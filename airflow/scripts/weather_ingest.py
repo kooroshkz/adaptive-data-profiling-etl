@@ -15,12 +15,12 @@ from config import (
     BACKFILL_START_DATE, BACKFILL_END_DATE,
     HOURLY_VARIABLES,
     REQUEST_TIMEOUT, MAX_RETRIES, RETRY_DELAY,
-    RAW_DATA_PATH, get_incremental_date
+    RAW_DATA_PATH, get_incremental_date, s3_enabled
 )
 from utils import (
     make_api_request, validate_weather_data,
     generate_batch_id, log_ingestion_stats, logger,
-    get_latest_s3_timestamp
+    get_latest_s3_timestamp, get_latest_local_timestamp
 )
 
 
@@ -269,10 +269,14 @@ class WeatherIngestion:
         hourly_size_mb = os.path.getsize(hourly_filepath) / (1024 * 1024)
         
         logger.info(f"Saved hourly data: {hourly_filepath} ({hourly_size_mb:.2f} MB)")
-        
-        # Upload to S3 immediately after saving
-        self.upload_to_s3(hourly_filepath)
-        
+
+        # Optionally mirror to S3 (only when S3 is explicitly configured).
+        # Default is local-only, no AWS required.
+        if s3_enabled():
+            self.upload_to_s3(hourly_filepath)
+        else:
+            logger.info("S3 not configured; keeping data local only")
+
         return hourly_filepath
     
     def upload_to_s3(self, hourly_filepath: str):
@@ -327,25 +331,29 @@ class WeatherIngestion:
             (start_date, end_date) tuple if data needs ingestion, None if up-to-date.
         """
         from datetime import datetime, timedelta
-        
-        logger.info(f"Checking S3 for latest data timestamp...")
-        
-        # Query S3 for the latest timestamp
-        latest_s3_date = get_latest_s3_timestamp(self.city_id)
-        
+
+        # Find the latest already-ingested date. Use local files by default;
+        # query S3 only when it is configured.
+        if s3_enabled():
+            logger.info("Checking S3 for latest data timestamp...")
+            latest_known_date = get_latest_s3_timestamp(self.city_id)
+        else:
+            logger.info("Checking local files for latest data timestamp...")
+            latest_known_date = get_latest_local_timestamp(self.city_id)
+
         # Calculate today's date (or yesterday if prefer to avoid partial data)
         today = datetime.now().date()
         yesterday = today - timedelta(days=1)
         target_date = yesterday  # Use yesterday to ensure complete data
-        
-        if not latest_s3_date:
-            # No data in S3 - this is first-time ingestion
-            logger.info(f"     No existing data found in S3 for {self.city_name}")
+
+        if not latest_known_date:
+            # No existing data - this is first-time ingestion
+            logger.info(f"     No existing data found for {self.city_name}")
             logger.info(f"   → Will fetch data from yesterday: {target_date}")
             return (str(target_date), str(target_date))
-        
-        # Parse the latest S3 date
-        latest_date = datetime.strptime(latest_s3_date, '%Y-%m-%d').date()
+
+        # Parse the latest known date
+        latest_date = datetime.strptime(latest_known_date, '%Y-%m-%d').date()
         
         # Check if we're already up-to-date
         if latest_date >= target_date:

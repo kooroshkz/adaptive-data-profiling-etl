@@ -18,20 +18,20 @@ x-airflow-common:
     AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: 1  # Run 1 task simultaneously
     AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: 1
     AIRFLOW__SCHEDULER__PARSING_PROCESSES: 2  # Use both cores
-    # Install additional Python packages
-    _PIP_ADDITIONAL_REQUIREMENTS: duckdb==1.1.3 boto3==1.35.80 requests==2.32.3 pandas==2.2.3 pyarrow==18.1.0
-    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-    AWS_REGION: ${AWS_REGION}
-    S3_BUCKET: ${S3_BUCKET}
-    MOTHERDUCK_TOKEN: ${MOTHERDUCK_TOKEN}
-    GITHUB_TOKEN: ${GITHUB_TOKEN}
-    GITHUB_REPO_OWNER: ${GITHUB_REPO_OWNER:-kooroshkz}
-    GITHUB_REPO_NAME: ${GITHUB_REPO_NAME:-adaptive-data-profiling-etl}
-    BREVO_API_KEY: ${BREVO_API_KEY}
-    BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL}
+    # Python packages for the DAGs. adaptive-profiler pulls pyod/optuna/scikit-learn/scipy/pyyaml.
+    _PIP_ADDITIONAL_REQUIREMENTS: adaptive-profiler duckdb boto3 requests pandas pyarrow
+    # Durable local data root (mounted repo data/): committed models, results, warehouse.
+    PROFILER_DATA_ROOT: /opt/airflow/project-data
+    # ---- Optional cloud integrations. Leave blank for a fully local run. ----
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    AWS_REGION: ${AWS_REGION:-}
+    S3_BUCKET: ${S3_BUCKET:-}
+    MOTHERDUCK_TOKEN: ${MOTHERDUCK_TOKEN:-}
+    BREVO_API_KEY: ${BREVO_API_KEY:-}
+    BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-}
     BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Airflow Weather Pipeline}
-    BREVO_ALERT_EMAIL: ${BREVO_ALERT_EMAIL}
+    BREVO_ALERT_EMAIL: ${BREVO_ALERT_EMAIL:-}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -123,6 +123,25 @@ services:
     user: "0:0"
     volumes:
       - .:/sources
+
+  # Next.js dashboard. Reads the local parquet the pipeline produces (no cloud).
+  # Optional: start it with `docker compose up dashboard` or with everything.
+  dashboard:
+    build: ../dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      PYTHON_BIN: python3
+      # Raw hourly parquet produced by the ingestion DAG (bind-mounted below).
+      RAW_PARQUET_GLOB: /data/raw/city=*/hourly_*.parquet
+      # Optional S3 (leave blank for a local run):
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+    volumes:
+      - ./data/raw:/data/raw:ro
+    restart: unless-stopped
 
 volumes:
   postgres-db-volume:

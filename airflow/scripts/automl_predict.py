@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Score today's data for one city and write predictions to S3.
+"""Score one city's data and write predictions to the local results store.
 
 Loads the most recent hourly parquet for *city*, calls Profiler.score() for
-each configured column, and uploads a predictions parquet to:
+each configured column, and writes a predictions parquet to:
 
-  s3://{bucket}/anomaly_results/city={city}/date={date}/predictions.parquet
+  data/anomaly_results/city={city}/date={date}/predictions.parquet
 
-Skips gracefully if no model has been trained yet for a given city/column.
+(also mirrored to S3 only if S3 is configured). Skips gracefully if no model has
+been trained yet for a given city/column.
 
 Called by weather_dag.py after each city's ingestion task.
 
@@ -22,13 +23,15 @@ import os
 from datetime import date
 from pathlib import Path
 
-import boto3
 import duckdb
 import pandas as pd
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 from adaptive_profiler import Profiler
+from adaptive_profiler.storage import LocalStore
+
+from config import RAW_DATA_PATH, ANOMALY_RESULTS_DIR, MODELS_DIR, s3_enabled
 
 _SCHEMA = _REPO_ROOT / "profiling_schema.yml"
 
@@ -49,7 +52,7 @@ def _load_env() -> None:
 
 def load_city_date_data(city: str, run_date: str, feature_cols: list[str]) -> pd.DataFrame:
     """Load data for *city* on *run_date* from the local parquet mirror."""
-    city_dir = _REPO_ROOT / "airflow" / "data" / "raw" / f"city={city}"
+    city_dir = Path(RAW_DATA_PATH) / f"city={city}"
     candidates = sorted(city_dir.glob("hourly_*.parquet"))
     if not candidates:
         return pd.DataFrame()
@@ -73,7 +76,25 @@ def load_city_date_data(city: str, run_date: str, feature_cols: list[str]) -> pd
     return df
 
 
-def upload_parquet(df: pd.DataFrame, bucket: str, city: str, run_date: str) -> str:
+def write_predictions(df: pd.DataFrame, city: str, run_date: str) -> str:
+    """Write predictions to the local anomaly-results store (default).
+
+    Mirrors to S3 only when S3 is explicitly configured.
+    """
+    out_dir = Path(ANOMALY_RESULTS_DIR) / f"city={city}" / f"date={run_date}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "predictions.parquet"
+    df.to_parquet(out_path, index=False)
+
+    if s3_enabled():
+        return _upload_predictions_to_s3(df, city, run_date)
+    return str(out_path)
+
+
+def _upload_predictions_to_s3(df: pd.DataFrame, city: str, run_date: str) -> str:
+    import boto3
+
+    bucket = os.getenv("S3_BUCKET")
     key = f"anomaly_results/city={city}/date={run_date}/predictions.parquet"
     buf = io.BytesIO()
     df.to_parquet(buf, index=False)
@@ -100,8 +121,11 @@ def main() -> None:
     run_date = args.date
 
     profiler = Profiler.from_yaml(args.schema)
+    # Force the local committed model store unless the schema explicitly asks
+    # for S3. Keeps the git-tracked models working with no AWS credentials.
+    if profiler._config.model_store.backend == "local":
+        profiler._store = LocalStore(base_dir=MODELS_DIR)
     feature_cols = [c.name for c in profiler.automl_columns]
-    bucket = profiler._config.model_store.bucket
 
     print(f"[INFO] city={city} date={run_date} store={profiler._store}")
 
@@ -132,8 +156,8 @@ def main() -> None:
         f"anomaly flags={n_flagged} | quality violations={n_violations}"
     )
 
-    s3_path = upload_parquet(predictions, bucket, city, run_date)
-    print(f"[OK]   Predictions → {s3_path}")
+    out_path = write_predictions(predictions, city, run_date)
+    print(f"[OK]   Predictions → {out_path}")
 
 
 if __name__ == "__main__":

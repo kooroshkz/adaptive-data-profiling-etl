@@ -100,6 +100,42 @@ def log_ingestion_stats(city: str, start_date: str, end_date: str, record_count:
     logger.info("=" * 60)
 
 
+def get_latest_local_timestamp(city_id: str) -> Optional[str]:
+    """Return the latest data date (YYYY-MM-DD) from local parquet files.
+
+    Reads the `time` column across all hourly parquet files already ingested for
+    the city. This is the local, no-cloud counterpart to
+    ``get_latest_s3_timestamp`` and is used by the smart ingestion mode.
+    """
+    import glob
+    import pyarrow.parquet as pq
+    from config import RAW_DATA_PATH
+
+    city_dir = os.path.join(RAW_DATA_PATH, f"city={city_id}")
+    files = sorted(glob.glob(os.path.join(city_dir, "hourly_*.parquet")))
+    if not files:
+        logger.info(f"   No existing local data for city={city_id}")
+        return None
+
+    latest: Optional[pd.Timestamp] = None
+    for path in files:
+        try:
+            df = pq.read_table(path, columns=["time"]).to_pandas()
+        except Exception as e:  # pragma: no cover - unreadable/partial file
+            logger.warning(f"   Could not read {path}: {e}")
+            continue
+        if "time" in df.columns and len(df) > 0:
+            file_max = pd.to_datetime(df["time"]).max()
+            if latest is None or file_max > latest:
+                latest = file_max
+
+    if latest is None:
+        return None
+    latest_date = latest.strftime("%Y-%m-%d")
+    logger.info(f"   Latest local data timestamp for {city_id}: {latest_date}")
+    return latest_date
+
+
 def get_latest_s3_timestamp(city_id: str, s3_bucket: str = None) -> Optional[str]:
     """Query S3 for the latest ingestion timestamp for a city.
     

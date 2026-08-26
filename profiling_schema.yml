@@ -1,9 +1,10 @@
 version: 1
 model_store:
-  backend: s3                           # s3 | local
-  bucket: weather-data-koorosh-thesis   # required when backend=s3
-  prefix: models/v1
-  # local_dir: ./models                 # required when backend=local
+  backend: local                        # local (default, no cloud) | s3 (optional)
+  local_dir: data/models/v1             # committed models live here (git-tracked)
+  prefix: models/v1                     # used only when backend=s3
+  # Optional S3 backend. Set backend: s3 and provide AWS creds to use it:
+  # bucket: weather-data-koorosh-thesis
 
 training:
   n_trials: 30        # Optuna trials per column
