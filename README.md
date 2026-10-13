@@ -1,79 +1,146 @@
-# Adaptive Data Profiling ETL
+# Adaptive Data Profiling for ETL Pipelines
 
-An ETL pipeline that ingests weather data, flags anomalies with per-column AutoML
-models, and transforms it for analysis. It runs fully locally in Docker, with no
-cloud accounts. The `experiments/` folder holds the standalone thesis experiments.
+**Learned, per-column data quality checks at the point where data enters the pipeline.**
 
-## Layout
+[![BNAIC 2026](https://img.shields.io/badge/BNAIC-2026-2563EB)](https://kooroshkz.github.io/adaptive-data-profiling-etl/)
+[![PyPI](https://img.shields.io/pypi/v/adaptive-profiler?color=16A34A)](https://pypi.org/project/adaptive-profiler/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-9CA3AF)](LICENSE)
 
-| Path | What |
-|---|---|
-| `airflow/` | The pipeline: DAGs, scripts, Docker setup. |
-| `experiments/` | Standalone anomaly-detection experiments. |
-| `dashboard/` | Next.js dashboard for the data and results. |
-| `data/` | Committed models (`data/models/`) and results (`data/anomaly_results/`). |
-| `profiling_schema.yml` | Per-column checks and AutoML settings. |
-| `docs/` | Design notes. |
+Code and experiments for the BNAIC 2026 paper
+**"Adaptive Data Profiling with ML-Based Quality Checks for ETL Pipeline Quality and Cost Optimization"**
+by Koorosh Komeili Zadeh, Joost Visser and Jan N. van Rijn (LIACS, Leiden University).
 
-## Run it locally
+[Project page](https://kooroshkz.github.io/adaptive-data-profiling-etl/) · [Video (4:50)](https://kooroshkz.com/files/content/AdaptiveProfiler/bnaic2026_video.mp4) · [PyPI package](https://pypi.org/project/adaptive-profiler/)
 
-Prerequisites: Docker + Docker Compose, Git LFS (the ~110 MB models live in LFS),
-and internet access. No `.env` and no cloud accounts needed.
+[![Project overview video](site/assets/poster.jpg)](https://kooroshkz.github.io/adaptive-data-profiling-etl/)
 
-```bash
-git lfs install          # once, so the models download as real files
-cd airflow
-docker compose up -d --build
+## The idea
+
+Rule-based checks catch type, null and range violations. They do not catch values that are valid but far from the historical norm, such as a 0 °C reading that passes a `[-10, 60]` rule in a week when every recent reading was above 25 °C.
+
+The **Adaptive Profiler** adds a second, learned check right after the rules, inside the Extract stage:
+
+```
+Source  →  [ Rule check  →  Learned check ]  →  Transform  →  Load
+                      Extract
 ```
 
-- Airflow: http://localhost:8080 (airflow / airflow)
-- Dashboard: http://localhost:3000
+- For every configured column of every source, an **Optuna** search (25 trials, TPE) picks a **PyOD** detector (Isolation Forest, LOF, ECOD, HBOS, COPOD) and its hyperparameters.
+- The search uses a **stability-based, unsupervised objective**. No labels are used for training or selection.
+- The fitted model scores each incoming batch. The output has one row per (timestamp, column) with the anomaly score, a flag, and any rule violations. Failures are reported, not raised, so the pipeline keeps running.
+- Detection runs at ingestion, before values are folded into aggregates (shift left).
 
-In Airflow, unpause and trigger one DAG:
+## Key results
 
-- `weather_backfill` (manual): load history from 2024-01-01 to yesterday. Run once.
-- `weather_ingestion` (daily): fetch new data incrementally.
+| Finding | Result |
+|:-|:-|
+| **1. The column decides** | Tight, predictable columns are detected reliably: surface pressure and soil moisture reach F2 > 0.9. Skewed or noisy columns (precipitation, temperature in variable climates) are not. |
+| | Amsterdam temperature: the rule admits all 74 injected anomalies, the learned check catches 53 (recall 71.6%). |
+| | Electricity demand (overridden): F2 0.929 (INDO) and 0.902 (ITSDO). |
+| **2. Cost is predictable** | Training time follows `T(n, m, k) = α · n^β · m^δ · k^γ`, fitted on about 90 runs (R² ≈ 0.86). |
+| | Row exponent β ranges from 0.307 (Isolation Forest) to 1.175 (LOF). |
+| | Projection error: 8.9% when calibrated on 25% of the data, 0.5% from 75%. |
+| **3. Classical beats neural here** | Under the same search and budget, classical detectors beat an AE/VAE search in 29 of 30 cases: mean F2 0.683 vs. 0.167, at 2.92 s vs. 26.69 s per column. |
 
-A run ingests to local parquet, scores with the models in `data/models/`, builds a
-DuckDB warehouse (`data/warehouse.duckdb`) and marts (`data/mart/`), and writes
-predictions to `data/anomaly_results/`. Open the dashboard to view them.
+Evaluation: hourly weather for five cities (Amsterdam, London, New York, Paris, Tokyo; 6 columns, 20,352 records each) and British electricity demand (INDO, ITSDO), with injected point shifts used only as ground truth.
 
-Notes:
-- Without Git LFS the models are pointer stubs. The pipeline still runs and skips
-  scoring until you `git lfs pull` or run the `weather_automl_train` DAG.
-- Native Linux permissions: run `echo "AIRFLOW_UID=$(id -u)" > .env` if needed.
-
-## Optional
-
-- Retrain models: trigger the `weather_automl_train` DAG (writes `data/models/v1/`).
-- Cloud: copy `airflow/.env.example` to `airflow/.env` and set AWS (S3), MotherDuck,
-  or Brevo email. Left blank, everything stays local.
-
-## Experiments
-
-Standalone scripts that read committed data offline with `--data-source local`:
+## Quick start: the profiler
 
 ```bash
-# Weather, classical AutoML (PyOD + Optuna)
-pip install -r experiments/automl/requirements.txt
-python experiments/automl/run_automl.py --cities amsterdam london new_york paris tokyo --scope both --n-trials 30 --data-source local
-
-# Weather, neural autoencoder search
-pip install -r experiments/autonn/requirements.txt
-python experiments/autonn/run_experiment.py --cities amsterdam london new_york paris tokyo --scope both --n-trials 30 --data-source local
-
-# Electricity (GB demand)
-pip install -r experiments/electricity/requirements.txt
-python experiments/electricity/fetch_electricity_data.py
-python experiments/electricity/run_electricity_automl.py
+pip install adaptive-profiler
 ```
 
-Results land in each experiment's `artifacts/` folder.
+Declare rules and learned checks per column in one YAML file:
 
-## Notes
+```yaml
+training:
+  n_trials: 25
+  window_size: 5000     # train on the most recent 5000 rows
 
-- Models: `data/models/v1/partition=<city>/col=<column>/latest.pkl`.
-- Transform is a local DuckDB step (`airflow/scripts/transform_local.py`); the
-  `weather_dbt/` project is kept for reference but not used.
-- Dashboard without Docker: `cd dashboard && npm install && npm run dev`, using a
-  Python that has `duckdb` (set `PYTHON_BIN` or use the repo `.venv`).
+columns:
+  temperature_2m:
+    type: float
+    automl: true        # learned check on
+    checks:
+      not_null: true
+      range: [-10, 60]
+
+  surface_pressure:
+    type: float
+    automl: true
+    model: LOF          # pin the detector and skip the search
+    hyperparameters:
+      n_neighbors: 20
+    flag_threshold: 0.42
+    checks:
+      not_null: true
+      range: [870, 1085]
+
+  precipitation:
+    type: float
+    automl: false       # rule checks only
+    checks:
+      not_null: true
+      range: [0, 300]
+```
+
+- **Training mode:** selects and fits one detector per column and source. Models are saved locally by default, or to S3.
+- **Scoring mode:** loads the saved models and scores new rows.
+
+## Quick start: the full pipeline
+
+The reference pipeline uses Apache Airflow (Docker), dbt on DuckDB / MotherDuck, and Amazon S3, and runs on AWS EC2 with GitHub Actions for CI/CD. It also runs fully locally, with no cloud account.
+
+```bash
+git clone https://github.com/kooroshkz/adaptive-data-profiling-etl.git
+cd adaptive-data-profiling-etl/airflow
+cp .env.example .env
+docker compose up -d
+```
+
+In the Airflow DAG, a detection task runs after each ingestion task and before the dbt transformation. Each city has its own ingestion task and its own detection task.
+
+## Repository layout
+
+| Path | Contents |
+|:-|:-|
+| `airflow/` | Airflow in Docker: DAG scripts, `docker-compose.yml`, `Makefile`, nginx config |
+| `weather_dbt/` | dbt models for the Transform stage |
+| `dashboard/` | Dashboard for the loaded data |
+| `data/` | Input data |
+| `experiments/` | Scripts for the three experiments in the paper |
+| `projection/` | Cost model benchmarking and projection |
+| `mlruns/` | Experiment tracking runs |
+| `docs/` | Requirements, technical design, upstream data notes |
+| `site/` | Project page (GitHub Pages) |
+| `profiling_schema.yml` | Example profiler configuration |
+
+## Practical guidance
+
+1. **Pilot** the profiler on a sample of the target data.
+2. **Project** the training cost with the cost model before committing.
+3. **Enable** `automl: true` only on columns where it works.
+4. **Retrain** on a schedule as a recurring Airflow task.
+
+## Limitations
+
+- Anomalies in the evaluation are injected point shifts. Sustained drift is not tested.
+- Each column is modelled on its own, so shifts that only appear across several columns together are not detected.
+- Both domains are seasonal with fairly stable distributions. Finance, IoT streams and abrupt regime changes remain to be evaluated.
+- If anomalies already exist in the training history, the model learns them as normal.
+
+## Citation
+
+```bibtex
+@inproceedings{komeilizadeh2026adaptive,
+  title     = {Adaptive Data Profiling with ML-Based Quality Checks
+               for ETL Pipeline Quality and Cost Optimization},
+  author    = {Komeili Zadeh, Koorosh and Visser, Joost and van Rijn, Jan N.},
+  booktitle = {Benelux Conference on Artificial Intelligence (BNAIC)},
+  year      = {2026}
+}
+```
+
+## License
+
+MIT. The profiler, pipeline, experiment scripts and input data are released under the MIT licence.
