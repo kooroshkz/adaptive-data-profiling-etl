@@ -814,7 +814,7 @@ export default function DashboardPage() {
           {/* Training DAG */}
           <div className="mt-6 border-t border-slate-100 pt-5">
             <h3 className="mb-1 text-sm font-semibold text-slate-700">AutoML Training DAG</h3>
-            <p className="mb-3 text-xs text-slate-400">weather_automl_train · Manual trigger · Trains all city × column models, saves to S3</p>
+            <p className="mb-3 text-xs text-slate-400">weather_automl_train · Manual trigger · Trains all city × column models, saves to data/models/v1</p>
             <TrainingDag />
           </div>
         </section>

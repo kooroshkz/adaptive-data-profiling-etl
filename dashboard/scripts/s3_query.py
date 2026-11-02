@@ -13,6 +13,7 @@ Data location resolution (first match wins):
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -60,8 +61,14 @@ def _load_env_fallback() -> None:
             os.environ[key] = value
 
 
+# Set when an S3 query fails, so the retry reads the local parquet instead.
+_FORCE_LOCAL = False
+
+
 def _s3_enabled() -> bool:
     """True only when S3 is fully configured; otherwise everything is local."""
+    if _FORCE_LOCAL:
+        return False
     return bool(
         os.getenv("S3_BUCKET")
         and os.getenv("AWS_ACCESS_KEY_ID")
@@ -331,7 +338,20 @@ def get_scatter_data(dataset: str, city: str, y_col: str, limit: int) -> dict[st
     }
 
 
+def _run(args: argparse.Namespace) -> dict[str, Any]:
+    if args.action == "metadata":
+        return get_metadata(args.dataset)
+    return get_scatter_data(
+        dataset=args.dataset,
+        city=args.city,
+        y_col=args.y_column,
+        limit=args.limit,
+    )
+
+
 def main() -> None:
+    global _FORCE_LOCAL
+
     parser = argparse.ArgumentParser(description="Query weather parquet data (local-first)")
     parser.add_argument("--action", choices=["metadata", "scatter"], required=True)
     parser.add_argument("--dataset", default="raw_hourly")
@@ -340,15 +360,14 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()
 
-    if args.action == "metadata":
-        payload = get_metadata(args.dataset)
-    else:
-        payload = get_scatter_data(
-            dataset=args.dataset,
-            city=args.city,
-            y_col=args.y_column,
-            limit=args.limit,
-        )
+    try:
+        payload = _run(args)
+    except Exception as exc:
+        if not _s3_enabled():
+            raise
+        print(f"S3 query failed, falling back to local parquet: {exc}", file=sys.stderr)
+        _FORCE_LOCAL = True
+        payload = _run(args)
 
     print(json.dumps(payload, ensure_ascii=True))
 

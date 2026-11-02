@@ -48,9 +48,9 @@ type ChartPointDatum = {
 };
 
 const datasetLabels: Record<DatasetKey, string> = {
-  raw_hourly: "Raw Hourly (S3)",
-  daily_with_anomalies: "Daily With Anomalies (MotherDuck)",
-  daily_without_anomalies: "Daily Without Anomalies (MotherDuck)",
+  raw_hourly: "Raw Hourly",
+  daily_with_anomalies: "Daily With Anomalies",
+  daily_without_anomalies: "Daily Without Anomalies",
 };
 
 const sourceModeLabels: Record<SourceMode, string> = {
@@ -369,9 +369,9 @@ export default function Home() {
       <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-8 md:px-8 lg:px-10">
         <header className="rounded-2xl border border-white/25 bg-[linear-gradient(125deg,#00344a_0%,#0b4f6c_45%,#14919b_100%)] p-6 text-white shadow-[0_18px_40px_rgba(0,0,0,0.25)] md:p-8">
           <p className="text-xs uppercase tracking-[0.24em] text-cyan-100/90">Adaptive Data Profiling</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight md:text-4xl">S3 Weather Observatory</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight md:text-4xl">Weather Observatory</h1>
           <p className="mt-3 max-w-3xl text-sm text-cyan-50/90 md:text-base">
-            Explore raw hourly weather data from S3 and daily aggregates from MotherDuck city views.
+            Explore raw hourly weather data and daily aggregates per city from the local parquet store.
             Synthetic anomalies are highlighted in crimson so you can compare normal behavior versus injected outliers.
           </p>
         </header>
